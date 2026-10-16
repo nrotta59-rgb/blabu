@@ -1,15 +1,14 @@
 --[[
     ============================================================
-    Script Supremo de Automação (Convertido para Orion Library)
+    Script Supremo de Automação (Orion Library - Carregamento Seguro)
     - Auto Play Again
     - Auto Pre-run Shop Confirm
-    - Auto Reset Periódico (Padrão: 3 minutos / Ajustável de 1 a 5 min)
-    - Anti-Lag (Otimização de Desempenho e Gráficos)
-    - Proteção e Bypass contra falhas do Main_Game
+    - Auto Reset (3 minutos por padrão)
+    - Anti-Lag (Otimizador de Desempenho)
+    - Duplo Método de HTTP (Previne erro de nil value)
     ============================================================
 ]]
 
--- Prevenção de instâncias duplicadas na memória
 if _G.OrionAutomationRunning then
     warn("[Automation] Instância anterior detectada. Reiniciando...")
     _G.OrionAutomationRunning = false
@@ -20,7 +19,6 @@ _G.OrionAutomationRunning = true
 local function startMasterScript()
     local Players = game:GetService("Players")
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
-    local CoreGui = game:GetService("CoreGui")
     local Lighting = game:GetService("Lighting")
     local HttpService = game:GetService("HttpService")
     
@@ -30,14 +28,34 @@ local function startMasterScript()
         return startMasterScript()
     end
 
-    -- Carregamento Seguro da Orion Library
+    -- Carregamento Blindado da Orion Library (request / HttpGet)
     local OrionLib = nil
     local successOrion, result = pcall(function()
-        return loadstring(game:HttpGet('https://raw.githubusercontent.com/shlexware/Orion/main/source'))()
+        local source = nil
+        
+        if request then
+            local req = request({
+                Url = "https://raw.githubusercontent.com/shlexware/Orion/main/source",
+                Method = "GET"
+            })
+            if req and req.Body then
+                source = req.Body
+            end
+        end
+        
+        if not source or source == "" then
+            source = game:HttpGet("https://raw.githubusercontent.com/shlexware/Orion/main/source")
+        end
+        
+        if not source or source == "" then
+            error("Conteúdo do link retornou vazio.")
+        end
+        
+        return loadstring(source)()
     end)
 
     if not successOrion or not result then
-        warn("[Erro Crítico] Falha ao carregar a Orion Library. Verifique o HttpGet do seu executor.")
+        warn("[Erro Crítico] O executor bloqueou o download da biblioteca.")
         _G.OrionAutomationRunning = false
         return
     end
@@ -80,17 +98,16 @@ local function startMasterScript()
 
     loadSettings()
 
-    -- Criação da Janela Principal
+    -- Janela Principal
     local Window = OrionLib:MakeWindow({
         Name = "Painel de Automação (Orion UI)",
         HidePremium = true,
         SaveConfig = false,
         IntroEnabled = true,
-        IntroText = "Iniciando Automação...",
+        IntroText = "Carregando Módulos...",
         Icon = "rbxassetid://4483362458"
     })
 
-    -- Criando as Abas
     local MainTab = Window:MakeTab({
         Name = "Automação",
         Icon = "rbxassetid://4483362458",
@@ -190,7 +207,7 @@ local function startMasterScript()
     })
 
     -- ==========================================
-    -- 3. Auto Reset (Ajustável de 1 a 5 min)
+    -- 3. Auto Reset (3 Minutos Padrão)
     -- ==========================================
     MainTab:AddSection({ Name = "Auto Reset (Anti-Bug)" })
 
@@ -240,7 +257,7 @@ local function startMasterScript()
     })
 
     -- ==========================================
-    -- 4. Anti-Lag (Otimização)
+    -- 4. Anti-Lag
     -- ==========================================
     SettingsTab:AddSection({ Name = "Otimização e Desempenho" })
 
@@ -280,7 +297,7 @@ local function startMasterScript()
             saveSettings()
             OrionLib:MakeNotification({
                 Name = "Sucesso",
-                Content = "Configurações salvas com sucesso!",
+                Content = "Configurações salvas!",
                 Image = "rbxassetid://4483362458",
                 Time = 3
             })
@@ -288,7 +305,7 @@ local function startMasterScript()
     })
 
     OrionLib:Init()
-    print("[OrionAutomation] Sistema carregado e estabilizado com Orion Library!")
+    print("[OrionAutomation] Script executado com sucesso.")
 end
 
 pcall(startMasterScript)
