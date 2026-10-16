@@ -1,18 +1,21 @@
 --[[
     ============================================================
-    Script de Automação Suprema e Masterizada (Rayfield GUI)
-    Versão Corrigida: Correção de Renderização de Abas e Canvas
+    Script de Automação Suprema e Masterizada (Versão Definitiva)
+    - Auto Play Again + Anti-Morte
+    - Auto Pre-run Shop Confirm (Loop de Alta Frequência)
+    - Correção Permanente para Elementos que Sumem na UI
+    - Salvamento de Configurações e Auto-Reload Blindado
     Local de Instalação: StarterPlayerScripts (LocalScript)
     ============================================================
 ]]
 
-if _G.SupremeAutomationRunning then
-    warn("[Automation] Uma instância anterior já está ativa. Encerrando...")
+if _G.UltimateAutomationRunning then
+    warn("[Automation] Instância anterior já ativa. Encerrando...")
     return
 end
-_G.SupremeAutomationRunning = true
+_G.UltimateAutomationRunning = true
 
-local function initializeSupremeScript()
+local function startMasterScript()
     local Players = game:GetService("Players")
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
     local CoreGui = game:GetService("CoreGui")
@@ -21,14 +24,12 @@ local function initializeSupremeScript()
     local player = Players.LocalPlayer
     if not player then
         task.wait(1)
-        return initializeSupremeScript()
+        return startMasterScript()
     end
 
-    -- Limpeza preventiva de instâncias residuais da UI na CoreGui
+    -- Limpeza de instâncias residuais
     if CoreGui:FindFirstChild("Rayfield") then
-        pcall(function()
-            CoreGui.Rayfield:Destroy()
-        end)
+        pcall(function() CoreGui.Rayfield:Destroy() end)
     end
 
     -- Gerenciamento de Configurações
@@ -56,9 +57,7 @@ local function initializeSupremeScript()
                     local decoded = HttpService:JSONDecode(rawData)
                     if type(decoded) == "table" then
                         for k, v in pairs(decoded) do
-                            if config[k] ~= nil then
-                                config[k] = v
-                            end
+                            if config[k] ~= nil then config[k] = v end
                         end
                     end
                 end
@@ -68,15 +67,15 @@ local function initializeSupremeScript()
 
     loadSettings()
 
-    -- Sistema de Auto Reload Blindado
+    -- Auto Reload em caso de falha crítica
     local function reloadScript(reason)
-        warn("[AutoReload] Motivo: " .. tostring(reason) .. ". Reiniciando sistema...")
-        _G.SupremeAutomationRunning = false
+        warn("[AutoReload] Motivo: " .. tostring(reason) .. ". Reiniciando...")
+        _G.UltimateAutomationRunning = false
         task.wait(1.5)
-        pcall(initializeSupremeScript)
+        pcall(startMasterScript)
     end
 
-    -- Carregamento seguro da Rayfield GUI via URL Pública Válida
+    -- Carregamento da Rayfield
     local Rayfield = nil
     local successRayfield, result = pcall(function()
         local source = game:HttpGet('https://sirius.menu/rayfield')
@@ -87,7 +86,7 @@ local function initializeSupremeScript()
     if successRayfield and result then
         Rayfield = result
     else
-        return reloadScript("Falha crítica ao carregar a biblioteca Rayfield")
+        return reloadScript("Falha ao carregar a biblioteca Rayfield")
     end
 
     -- Criação da Janela
@@ -95,8 +94,8 @@ local function initializeSupremeScript()
     local successWindow = pcall(function()
         Window = Rayfield:CreateWindow({
             Name = "Painel Supremo de Automação",
-            LoadingTitle = "Carregando Sistemas...",
-            LoadingSubtitle = "Otimizado e Estável",
+            LoadingTitle = "Iniciando Sistema...",
+            LoadingSubtitle = "Estável & Otimizado",
             ConfigurationSaving = {
                 Enabled = true,
                 FolderName = "SupremeAutomation",
@@ -107,7 +106,7 @@ local function initializeSupremeScript()
     end)
 
     if not successWindow or not Window then
-        return reloadScript("Falha ao instanciar a janela principal")
+        return reloadScript("Falha ao criar a janela")
     end
 
     local MainTab, SettingsTab
@@ -117,19 +116,28 @@ local function initializeSupremeScript()
     end)
 
     if not MainTab or not SettingsTab then
-        return reloadScript("Falha ao criar as abas do painel")
+        return reloadScript("Falha ao criar as abas")
     end
 
-    -- Correção de Renderização: Força o recálculo do layout da UI para evitar que elementos sumam
+    -- ==========================================================
+    -- CORREÇÃO PERMANENTE: Monitor de Layout Anti-Sumumo da UI
+    -- ==========================================================
     task.spawn(function()
-        task.wait(0.5)
-        pcall(function()
-            for _, gui in ipairs(CoreGui:GetDescendants()) do
-                if gui:IsA("ScrollingFrame") then
-                    gui.CanvasSize = UDim2.new(0, 0, 0, gui.UIListLayout.AbsoluteContentSize.Y + 30)
+        while _G.UltimateAutomationRunning do
+            pcall(function()
+                local rayfieldCore = CoreGui:FindFirstChild("Rayfield")
+                if rayfieldCore then
+                    for _, desc in ipairs(rayfieldCore:GetDescendants()) do
+                        if desc:IsA("ScrollingFrame") then
+                            if desc.UIListLayout then
+                                desc.CanvasSize = UDim2.new(0, 0, 0, desc.UIListLayout.AbsoluteContentSize.Y + 40)
+                            end
+                        end
+                    end
                 end
-            end
-        end)
+            end)
+            task.wait(2) -- Atualiza o layout a cada 2 segundos para nunca sumir ou travar
+        end
     end)
 
     -- ==========================================
@@ -181,9 +189,7 @@ local function initializeSupremeScript()
         end)
     end
 
-    if player.Character then
-        monitorCharacter(player.Character)
-    end
+    if player.Character then monitorCharacter(player.Character) end
     player.CharacterAdded:Connect(monitorCharacter)
 
     MainTab:CreateToggle({
@@ -258,7 +264,7 @@ local function initializeSupremeScript()
     SettingsTab:CreateButton({
         Name = "Recarregar Script Manualmente",
         Callback = function()
-            reloadScript("Solicitação manual do usuário")
+            reloadScript("Solicitação manual")
         end,
     })
 
@@ -268,7 +274,7 @@ local function initializeSupremeScript()
             saveSettings()
             Rayfield:Notify({
                 Title = "Sucesso",
-                Content = "Configurações salvas com sucesso!",
+                Content = "Configurações salvas!",
                 Duration = 2,
                 Image = 4483362458,
             })
@@ -276,16 +282,11 @@ local function initializeSupremeScript()
     })
 
     player.OnTeleport:Connect(function()
-        if config.AutoInitializeEnabled then
-            pcall(saveSettings)
-        end
+        if config.AutoInitializeEnabled then pcall(saveSettings) end
     end)
 
-    pcall(function()
-        Rayfield:LoadConfiguration()
-    end)
-
-    print("[SupremeAutomation] Sistema carregado, otimizado e operacional.")
+    pcall(function() Rayfield:LoadConfiguration() end)
+    print("[UltimateAutomation] Sistema operacional e estabilizado com sucesso.")
 end
 
-pcall(initializeSupremeScript)
+pcall(startMasterScript)
