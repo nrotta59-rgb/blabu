@@ -1,11 +1,11 @@
 --[[
     ============================================================
     Script de Automação Suprema e Masterizada (Rayfield GUI)
+    Versão Corrigida: Correção de Renderização de Abas e Canvas
     Local de Instalação: StarterPlayerScripts (LocalScript)
     ============================================================
 ]]
 
--- Prevenção rigorosa de instâncias duplicadas
 if _G.SupremeAutomationRunning then
     warn("[Automation] Uma instância anterior já está ativa. Encerrando...")
     return
@@ -76,10 +76,12 @@ local function initializeSupremeScript()
         pcall(initializeSupremeScript)
     end
 
-    -- Carregamento seguro da Rayfield GUI
+    -- Carregamento seguro da Rayfield GUI via URL Pública Válida
     local Rayfield = nil
     local successRayfield, result = pcall(function()
-        return loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+        local source = game:HttpGet('https://sirius.menu/rayfield')
+        if not source or source == "" then error("Link vazio") end
+        return loadstring(source)()
     end)
 
     if successRayfield and result then
@@ -117,6 +119,18 @@ local function initializeSupremeScript()
     if not MainTab or not SettingsTab then
         return reloadScript("Falha ao criar as abas do painel")
     end
+
+    -- Correção de Renderização: Força o recálculo do layout da UI para evitar que elementos sumam
+    task.spawn(function()
+        task.wait(0.5)
+        pcall(function()
+            for _, gui in ipairs(CoreGui:GetDescendants()) do
+                if gui:IsA("ScrollingFrame") then
+                    gui.CanvasSize = UDim2.new(0, 0, 0, gui.UIListLayout.AbsoluteContentSize.Y + 30)
+                end
+            end
+        end)
+    end)
 
     -- ==========================================
     -- 1. Sistema Auto Play Again
@@ -274,5 +288,4 @@ local function initializeSupremeScript()
     print("[SupremeAutomation] Sistema carregado, otimizado e operacional.")
 end
 
--- Inicialização segura
 pcall(initializeSupremeScript)
