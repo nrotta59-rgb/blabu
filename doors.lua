@@ -1,20 +1,21 @@
 --[[
     ============================================================
-    Script Supremo com Auto Reset em 3 Minutos
+    Script Supremo de Automação (Convertido para Orion Library)
     - Auto Play Again
     - Auto Pre-run Shop Confirm
-    - Auto Reset (Padrão: 3 minutos)
-    - Anti-Lag (Otimizador de Desempenho)
+    - Auto Reset Periódico (Padrão: 3 minutos / Ajustável de 1 a 5 min)
+    - Anti-Lag (Otimização de Desempenho e Gráficos)
     - Proteção e Bypass contra falhas do Main_Game
     ============================================================
 ]]
 
-if _G.SupremeAutomationRunning then
+-- Prevenção de instâncias duplicadas na memória
+if _G.OrionAutomationRunning then
     warn("[Automation] Instância anterior detectada. Reiniciando...")
-    _G.SupremeAutomationRunning = false
+    _G.OrionAutomationRunning = false
     task.wait(0.5)
 end
-_G.SupremeAutomationRunning = true
+_G.OrionAutomationRunning = true
 
 local function startMasterScript()
     local Players = game:GetService("Players")
@@ -29,21 +30,29 @@ local function startMasterScript()
         return startMasterScript()
     end
 
-    -- Limpeza de interfaces anteriores na CoreGui
-    if CoreGui:FindFirstChild("Rayfield") then
-        pcall(function() CoreGui.Rayfield:Destroy() end)
-    end
+    -- Carregamento Seguro da Orion Library
+    local OrionLib = nil
+    local successOrion, result = pcall(function()
+        return loadstring(game:HttpGet('https://raw.githubusercontent.com/shlexware/Orion/main/source'))()
+    end)
 
-    -- Tabela de Configurações (Auto Reset definido em 3 minutos)
+    if not successOrion or not result then
+        warn("[Erro Crítico] Falha ao carregar a Orion Library. Verifique o HttpGet do seu executor.")
+        _G.OrionAutomationRunning = false
+        return
+    end
+    OrionLib = result
+
+    -- Configurações Locais
     local config = {
         AutoPlayAgainEnabled = false,
         AutoShopConfirmEnabled = false,
         AutoResetEnabled = false,
-        AutoResetMinutes = 3, -- Definido para 3 minutos
+        AutoResetMinutes = 3,
         AntiLagEnabled = false
     }
 
-    local settingsFileName = "SupremeAutomationConfig.json"
+    local settingsFileName = "OrionAutomationConfig.json"
 
     local function saveSettings()
         pcall(function()
@@ -71,45 +80,33 @@ local function startMasterScript()
 
     loadSettings()
 
-    -- Carregamento Seguro da Rayfield
-    local Rayfield = nil
-    local successRayfield, result = pcall(function()
-        local source = game:HttpGet('https://sirius.menu/rayfield')
-        if not source or source == "" then error("Fonte vazia") end
-        return loadstring(source)()
-    end)
+    -- Criação da Janela Principal
+    local Window = OrionLib:MakeWindow({
+        Name = "Painel de Automação (Orion UI)",
+        HidePremium = true,
+        SaveConfig = false,
+        IntroEnabled = true,
+        IntroText = "Iniciando Automação...",
+        Icon = "rbxassetid://4483362458"
+    })
 
-    if not successRayfield or not result then
-        warn("[Erro] Falha ao carregar a interface Rayfield. Verifique a conexão do executor.")
-        _G.SupremeAutomationRunning = false
-        return
-    end
-    Rayfield = result
+    -- Criando as Abas
+    local MainTab = Window:MakeTab({
+        Name = "Automação",
+        Icon = "rbxassetid://4483362458",
+        PremiumOnly = false
+    })
 
-    -- Criação da Janela
-    local Window = nil
-    local successWindow = pcall(function()
-        Window = Rayfield:CreateWindow({
-            Name = "Painel de Automação Blindado",
-            LoadingTitle = "Iniciando...",
-            LoadingSubtitle = "Proteção Anti-Erro Ativa",
-            ConfigurationSaving = { Enabled = false },
-            KeySystem = false,
-        })
-    end)
-
-    if not successWindow or not Window then
-        _G.SupremeAutomationRunning = false
-        return
-    end
-
-    local MainTab = Window:CreateTab("Automação", 4483362458)
-    local SettingsTab = Window:CreateTab("Configurações", 4483362458)
+    local SettingsTab = Window:MakeTab({
+        Name = "Configurações",
+        Icon = "rbxassetid://4483362458",
+        PremiumOnly = false
+    })
 
     -- ==========================================
-    -- 1. Auto Play Again (Execução Direta)
+    -- 1. Auto Play Again
     -- ==========================================
-    MainTab:CreateSection("Auto Play Again")
+    MainTab:AddSection({ Name = "Auto Play Again" })
     local isDeadProcessing = false
 
     local function triggerPlayAgain()
@@ -148,24 +145,23 @@ local function startMasterScript()
     if player.Character then monitorCharacter(player.Character) end
     player.CharacterAdded:Connect(monitorCharacter)
 
-    MainTab:CreateToggle({
+    MainTab:AddToggle({
         Name = "Ativar Auto Play Again",
-        CurrentValue = config.AutoPlayAgainEnabled,
-        Flag = "SupremePlayAgainToggle",
+        Default = config.AutoPlayAgainEnabled,
         Callback = function(Value)
             config.AutoPlayAgainEnabled = Value
             saveSettings()
-        end,
+        end
     })
 
     -- ==========================================
     -- 2. Auto Pre-run Shop Confirm
     -- ==========================================
-    MainTab:CreateSection("Auto Pre-run Shop Confirm")
+    MainTab:AddSection({ Name = "Auto Pre-run Shop Confirm" })
     local shopProcessed = false
 
     task.spawn(function()
-        while _G.SupremeAutomationRunning do
+        while _G.OrionAutomationRunning do
             if config.AutoShopConfirmEnabled and not shopProcessed do
                 pcall(function()
                     local remotesFolder = ReplicatedStorage:FindFirstChild("RemotesFolder")
@@ -181,27 +177,26 @@ local function startMasterScript()
         end
     end)
 
-    MainTab:CreateToggle({
+    MainTab:AddToggle({
         Name = "Ativar Auto Pre-run Shop Confirm",
-        CurrentValue = config.AutoShopConfirmEnabled,
-        Flag = "SupremeShopConfirmToggle",
+        Default = config.AutoShopConfirmEnabled,
         Callback = function(Value)
             config.AutoShopConfirmEnabled = Value
             saveSettings()
             if Value then
                 shopProcessed = false
             end
-        end,
+        end
     })
 
     -- ==========================================
-    -- 3. Auto Reset (Ajustado para 3 Minutos)
+    -- 3. Auto Reset (Ajustável de 1 a 5 min)
     -- ==========================================
-    MainTab:CreateSection("Auto Reset (Anti-Bug)")
+    MainTab:AddSection({ Name = "Auto Reset (Anti-Bug)" })
 
     task.spawn(function()
         local timer = 0
-        while _G.SupremeAutomationRunning do
+        while _G.OrionAutomationRunning do
             task.wait(1)
             if config.AutoResetEnabled then
                 timer = timer + 1
@@ -221,32 +216,33 @@ local function startMasterScript()
         end
     end)
 
-    MainTab:CreateToggle({
+    MainTab:AddToggle({
         Name = "Ativar Auto Reset Periódico",
-        CurrentValue = config.AutoResetEnabled,
-        Flag = "AutoResetToggle",
+        Default = config.AutoResetEnabled,
         Callback = function(Value)
             config.AutoResetEnabled = Value
             saveSettings()
-        end,
+        end
     })
 
-    MainTab:CreateSlider({
+    MainTab:AddSlider({
         Name = "Tempo do Auto Reset (Minutos)",
-        Range = {1, 5},
+        Min = 1,
+        Max = 5,
+        Default = config.AutoResetMinutes,
+        Color = Color3.fromRGB(255, 255, 255),
         Increment = 1,
-        CurrentValue = config.AutoResetMinutes,
-        Flag = "AutoResetSlider",
+        ValueName = "min",
         Callback = function(Value)
             config.AutoResetMinutes = Value
             saveSettings()
-        end,
+        end    
     })
 
     -- ==========================================
-    -- 4. Anti-Lag (Otimizador de Desempenho)
+    -- 4. Anti-Lag (Otimização)
     -- ==========================================
-    SettingsTab:CreateSection("Otimização de Desempenho")
+    SettingsTab:AddSection({ Name = "Otimização e Desempenho" })
 
     local function applyAntiLag(state)
         pcall(function()
@@ -264,35 +260,35 @@ local function startMasterScript()
         end)
     end
 
-    SettingsTab:CreateToggle({
+    SettingsTab:AddToggle({
         Name = "Ativar Anti-Lag (Remove Sombras/Efeitos)",
-        CurrentValue = config.AntiLagEnabled,
-        Flag = "AntiLagToggle",
+        Default = config.AntiLagEnabled,
         Callback = function(Value)
             config.AntiLagEnabled = Value
             applyAntiLag(Value)
             saveSettings()
-        end,
+        end
     })
 
     if config.AntiLagEnabled then
         applyAntiLag(true)
     end
 
-    SettingsTab:CreateButton({
+    SettingsTab:AddButton({
         Name = "Salvar Configurações Manualmente",
         Callback = function()
             saveSettings()
-            Rayfield:Notify({
-                Title = "Sucesso",
-                Content = "Configurações salvas!",
-                Duration = 2,
-                Image = 4483362458,
+            OrionLib:MakeNotification({
+                Name = "Sucesso",
+                Content = "Configurações salvas com sucesso!",
+                Image = "rbxassetid://4483362458",
+                Time = 3
             })
-        end,
+        end
     })
 
-    print("[Automation] Sistema carregado com Auto Reset em 3 minutos.")
+    OrionLib:Init()
+    print("[OrionAutomation] Sistema carregado e estabilizado com Orion Library!")
 end
 
 pcall(startMasterScript)
