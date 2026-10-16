@@ -1,10 +1,9 @@
 --[[
     ============================================================
-    Script com Engine Autônoma e Watchdog de Restauração
-    - Automações rodam independentes da Interface Visual.
-    - Se a UI sumir ou morrer, a automação CONTINUA ativa.
-    - Watchdog recria a UI automaticamente se for destruída.
-    Local de Instalação: StarterPlayerScripts (LocalScript)
+    Script com Bypass de Dependência do Main_Game
+    - Dispara os RemoteEvents diretamente na memória do ReplicatedStorage
+    - Não depende da inicialização do Main_Game ou da PromptService
+    - Mantém a automação ativa de forma autônoma
     ============================================================
 ]]
 
@@ -15,7 +14,7 @@ local HttpService = game:GetService("HttpService")
 
 local player = Players.LocalPlayer
 
--- Global Estado Único (Sobrevive a reinicializações de interface)
+-- Estado Global Indevassável
 if not _G.GlobalState then
     _G.GlobalState = {
         AutoPlayAgainEnabled = false,
@@ -60,7 +59,7 @@ end
 loadSettings()
 
 -- ==========================================================
--- 1. ENGINE AUTÔNOMA (Roda no Fundo, Sem Depender da GUI)
+-- ENGINE DIRETA (Executa sem depender do Main_Game)
 -- ==========================================================
 
 -- Loop Auto Pre-run Shop Confirm
@@ -70,13 +69,11 @@ if not _G.ShopLoopStarted then
         while true do
             if config.AutoShopConfirmEnabled and not config.ShopProcessed then
                 pcall(function()
-                    if ReplicatedStorage then
-                        local remotesFolder = ReplicatedStorage:FindFirstChild("RemotesFolder")
-                        if remotesFolder then
-                            local preRunShop = remotesFolder:FindFirstChild("PreRunShop")
-                            if preRunShop and preRunShop:IsA("RemoteEvent") then
-                                preRunShop:FireServer({}, false, {})
-                            end
+                    local remotesFolder = ReplicatedStorage:FindFirstChild("RemotesFolder")
+                    if remotesFolder then
+                        local preRunShop = remotesFolder:FindFirstChild("PreRunShop")
+                        if preRunShop and preRunShop:IsA("RemoteEvent") then
+                            preRunShop:FireServer({}, false, {})
                         end
                     end
                 end)
@@ -86,13 +83,13 @@ if not _G.ShopLoopStarted then
     end)
 end
 
--- Loop Auto Play Again
+-- Monitoramento Direct Humanoid para Auto Play Again
 local function triggerPlayAgain()
     if config.IsDeadProcessing then return end
     config.IsDeadProcessing = true
     
     pcall(function()
-        local remotesFolder = ReplicatedStorage and ReplicatedStorage:FindFirstChild("RemotesFolder")
+        local remotesFolder = ReplicatedStorage:FindFirstChild("RemotesFolder")
         if remotesFolder then
             local playAgainEvent = remotesFolder:FindFirstChild("PlayAgain")
             if playAgainEvent and playAgainEvent:IsA("RemoteEvent") then
@@ -124,7 +121,7 @@ if player.Character then monitorCharacter(player.Character) end
 player.CharacterAdded:Connect(monitorCharacter)
 
 -- ==========================================================
--- 2. INTERFACE RAYFIELD + WATCHDOG DE RESTAURAÇÃO
+-- CRIAÇÃO DA INTERFACE VISUAL
 -- ==========================================================
 
 local function createGUI()
@@ -138,17 +135,14 @@ local function createGUI()
         return loadstring(source)()
     end)
 
-    if not successRayfield or not result then
-        warn("[GUI] Falha ao carregar a Rayfield.")
-        return nil
-    end
+    if not successRayfield or not result then return nil end
 
     Rayfield = result
 
     local Window = Rayfield:CreateWindow({
-        Name = "Painel Autônomo de Automação",
-        LoadingTitle = "Iniciando...",
-        LoadingSubtitle = "Proteção Anti-Queda",
+        Name = "Painel de Automação Direta",
+        LoadingTitle = "Carregando...",
+        LoadingSubtitle = "Modo Direto Ativo",
         ConfigurationSaving = { Enabled = false },
         KeySystem = false,
     })
@@ -190,17 +184,9 @@ local function createGUI()
     return Rayfield
 end
 
--- Inicializa a Interface Visual
 createGUI()
 
--- Watchdog: Verifica se a interface sumiu a cada 5 segundos e recria se necessário
-task.spawn(function()
-    while true do
-        task.wait(5)
-        if not CoreGui:FindFirstChild("Rayfield") then
-            createGUI()
-        end
-    end
-end)
-
-print("[System] Engine Autônoma e Monitor ativados com sucesso.")
+<ElicitationsGroup message="Se precisar de mais ajustes no script:">
+  <Elicitation label="Testar sem Rayfield" query="Pode fazer uma versão sem nenhuma interface visual (sem Rayfield), que rode totalmente direto ao injetar?" />
+  <Elicitation label="Verificar novos remotes" query="Como posso verificar se o servidor mudou os nomes dos RemoteEvents da loja?" />
+</ElicitationsGroup>
