@@ -1,19 +1,20 @@
 --[[
     ============================================================
-    Script Supremo com Rayfield, Auto Reset e Anti-Lag
+    Script Supremo com Auto Reset em 3 Minutos
     - Auto Play Again
     - Auto Pre-run Shop Confirm
-    - Auto Reset (Anti-Bug / 1 a 5 minutos)
-    - Anti-Lag (Otimização de Servidor e Gráficos)
-    Local de Instalação: StarterPlayerScripts (LocalScript)
+    - Auto Reset (Padrão: 3 minutos)
+    - Anti-Lag (Otimizador de Desempenho)
+    - Proteção e Bypass contra falhas do Main_Game
     ============================================================
 ]]
 
-if _G.UltimateAutomationRunning then
-    warn("[Automation] Instância anterior já ativa. Encerrando...")
-    return
+if _G.SupremeAutomationRunning then
+    warn("[Automation] Instância anterior detectada. Reiniciando...")
+    _G.SupremeAutomationRunning = false
+    task.wait(0.5)
 end
-_G.UltimateAutomationRunning = true
+_G.SupremeAutomationRunning = true
 
 local function startMasterScript()
     local Players = game:GetService("Players")
@@ -28,19 +29,18 @@ local function startMasterScript()
         return startMasterScript()
     end
 
-    -- Limpeza de instâncias residuais da Rayfield
+    -- Limpeza de interfaces anteriores na CoreGui
     if CoreGui:FindFirstChild("Rayfield") then
         pcall(function() CoreGui.Rayfield:Destroy() end)
     end
 
-    -- Configurações Globais
+    -- Tabela de Configurações (Auto Reset definido em 3 minutos)
     local config = {
         AutoPlayAgainEnabled = false,
         AutoShopConfirmEnabled = false,
         AutoResetEnabled = false,
-        AutoResetMinutes = 2, -- Padrão: 2 minutos (1 a 5)
-        AntiLagEnabled = false,
-        AutoInitializeEnabled = true
+        AutoResetMinutes = 3, -- Definido para 3 minutos
+        AntiLagEnabled = false
     }
 
     local settingsFileName = "SupremeAutomationConfig.json"
@@ -71,17 +71,17 @@ local function startMasterScript()
 
     loadSettings()
 
-    -- Carregamento Blindado da Rayfield (Evita erro de valor nulo)
+    -- Carregamento Seguro da Rayfield
     local Rayfield = nil
     local successRayfield, result = pcall(function()
         local source = game:HttpGet('https://sirius.menu/rayfield')
-        if not source or source == "" then error("Link vazio") end
+        if not source or source == "" then error("Fonte vazia") end
         return loadstring(source)()
     end)
 
     if not successRayfield or not result then
-        warn("[Erro Crítico] Falha ao carregar a Rayfield. Verifique se o seu executor permite HttpGet.")
-        _G.UltimateAutomationRunning = false
+        warn("[Erro] Falha ao carregar a interface Rayfield. Verifique a conexão do executor.")
+        _G.SupremeAutomationRunning = false
         return
     end
     Rayfield = result
@@ -90,20 +90,16 @@ local function startMasterScript()
     local Window = nil
     local successWindow = pcall(function()
         Window = Rayfield:CreateWindow({
-            Name = "Painel Supremo - Otimizado",
-            LoadingTitle = "Carregando Módulos...",
-            LoadingSubtitle = "Estável & Blindado",
-            ConfigurationSaving = {
-                Enabled = true,
-                FolderName = "SupremeAutomation",
-                FileName = "SessionData"
-            },
+            Name = "Painel de Automação Blindado",
+            LoadingTitle = "Iniciando...",
+            LoadingSubtitle = "Proteção Anti-Erro Ativa",
+            ConfigurationSaving = { Enabled = false },
             KeySystem = false,
         })
     end)
 
     if not successWindow or not Window then
-        _G.UltimateAutomationRunning = false
+        _G.SupremeAutomationRunning = false
         return
     end
 
@@ -111,7 +107,7 @@ local function startMasterScript()
     local SettingsTab = Window:CreateTab("Configurações", 4483362458)
 
     -- ==========================================
-    -- 1. Sistema Auto Play Again
+    -- 1. Auto Play Again (Execução Direta)
     -- ==========================================
     MainTab:CreateSection("Auto Play Again")
     local isDeadProcessing = false
@@ -121,7 +117,7 @@ local function startMasterScript()
         isDeadProcessing = true
         
         pcall(function()
-            local remotesFolder = ReplicatedStorage and ReplicatedStorage:FindFirstChild("RemotesFolder")
+            local remotesFolder = ReplicatedStorage:FindFirstChild("RemotesFolder")
             if remotesFolder then
                 local playAgainEvent = remotesFolder:FindFirstChild("PlayAgain")
                 if playAgainEvent and playAgainEvent:IsA("RemoteEvent") then
@@ -163,34 +159,27 @@ local function startMasterScript()
     })
 
     -- ==========================================
-    -- 2. Sistema Auto Pre-run Shop Confirm
+    -- 2. Auto Pre-run Shop Confirm
     -- ==========================================
     MainTab:CreateSection("Auto Pre-run Shop Confirm")
     local shopProcessed = false
 
-    local function runShopAutomation()
-        if shopProcessed or not config.AutoShopConfirmEnabled then return end
-        
-        task.spawn(function()
-            while config.AutoShopConfirmEnabled and not shopProcessed do
+    task.spawn(function()
+        while _G.SupremeAutomationRunning do
+            if config.AutoShopConfirmEnabled and not shopProcessed do
                 pcall(function()
-                    if ReplicatedStorage then
-                        local remotesFolder = ReplicatedStorage:WaitForChild("RemotesFolder", 2)
-                        if remotesFolder then
-                            local preRunShop = remotesFolder:WaitForChild("PreRunShop", 2)
-                            if preRunShop and preRunShop:IsA("RemoteEvent") then
-                                preRunShop:FireServer({}, false, {})
-                            end
+                    local remotesFolder = ReplicatedStorage:FindFirstChild("RemotesFolder")
+                    if remotesFolder then
+                        local preRunShop = remotesFolder:FindFirstChild("PreRunShop")
+                        if preRunShop and preRunShop:IsA("RemoteEvent") then
+                            preRunShop:FireServer({}, false, {})
                         end
                     end
                 end)
-                task.wait(0.15)
             end
-        end)
-    end
-
-    shopProcessed = false
-    runShopAutomation()
+            task.wait(0.15)
+        end
+    end)
 
     MainTab:CreateToggle({
         Name = "Ativar Auto Pre-run Shop Confirm",
@@ -201,19 +190,18 @@ local function startMasterScript()
             saveSettings()
             if Value then
                 shopProcessed = false
-                runShopAutomation()
             end
         end,
     })
 
     -- ==========================================
-    -- 3. Sistema Auto Reset (Anti-Bug / 1 a 5 min)
+    -- 3. Auto Reset (Ajustado para 3 Minutos)
     -- ==========================================
     MainTab:CreateSection("Auto Reset (Anti-Bug)")
 
     task.spawn(function()
         local timer = 0
-        while true do
+        while _G.SupremeAutomationRunning do
             task.wait(1)
             if config.AutoResetEnabled then
                 timer = timer + 1
@@ -256,9 +244,9 @@ local function startMasterScript()
     })
 
     -- ==========================================
-    -- 4. Sistema Anti-Lag (Otimização)
+    -- 4. Anti-Lag (Otimizador de Desempenho)
     -- ==========================================
-    SettingsTab:CreateSection("Otimização e Desempenho")
+    SettingsTab:CreateSection("Otimização de Desempenho")
 
     local function applyAntiLag(state)
         pcall(function()
@@ -277,7 +265,7 @@ local function startMasterScript()
     end
 
     SettingsTab:CreateToggle({
-        Name = "Ativar Anti-Lag (Remove Sombras e Partículas)",
+        Name = "Ativar Anti-Lag (Remove Sombras/Efeitos)",
         CurrentValue = config.AntiLagEnabled,
         Flag = "AntiLagToggle",
         Callback = function(Value)
@@ -297,15 +285,14 @@ local function startMasterScript()
             saveSettings()
             Rayfield:Notify({
                 Title = "Sucesso",
-                Content = "Configurações salvas com sucesso!",
+                Content = "Configurações salvas!",
                 Duration = 2,
                 Image = 4483362458,
             })
         end,
     })
 
-    pcall(function() Rayfield:LoadConfiguration() end)
-    print("[SupremeAutomation] Sistema totalmente carregado com Auto Reset e Anti-Lag.")
+    print("[Automation] Sistema carregado com Auto Reset em 3 minutos.")
 end
 
 pcall(startMasterScript)
