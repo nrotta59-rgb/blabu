@@ -1,62 +1,311 @@
 --[[
-    Script de Automação Direta (Sem Interface Visual / Sem Rayfield)
-    Executa instantaneamente ao injetar.
+    ============================================================
+    Script Supremo com Rayfield, Auto Reset e Anti-Lag
+    - Auto Play Again
+    - Auto Pre-run Shop Confirm
+    - Auto Reset (Anti-Bug / 1 a 5 minutos)
+    - Anti-Lag (Otimização de Servidor e Gráficos)
+    Local de Instalação: StarterPlayerScripts (LocalScript)
+    ============================================================
 ]]
 
-local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local player = Players.LocalPlayer
+if _G.UltimateAutomationRunning then
+    warn("[Automation] Instância anterior já ativa. Encerrando...")
+    return
+end
+_G.UltimateAutomationRunning = true
 
--- Configurações de Ativação (Altere para true ou false)
-local AUTO_PLAY_AGAIN = true
-local AUTO_SHOP_CONFIRM = true
+local function startMasterScript()
+    local Players = game:GetService("Players")
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local CoreGui = game:GetService("CoreGui")
+    local Lighting = game:GetService("Lighting")
+    local HttpService = game:GetService("HttpService")
+    
+    local player = Players.LocalPlayer
+    if not player then
+        task.wait(1)
+        return startMasterScript()
+    end
 
-print("--- [AUTOMATION] Script Autônomo Iniciado ---")
+    -- Limpeza de instâncias residuais da Rayfield
+    if CoreGui:FindFirstChild("Rayfield") then
+        pcall(function() CoreGui.Rayfield:Destroy() end)
+    end
 
--- 1. Loop para Auto Pre-run Shop Confirm
-task.spawn(function()
-    while AUTO_SHOP_CONFIRM do
+    -- Configurações Globais
+    local config = {
+        AutoPlayAgainEnabled = false,
+        AutoShopConfirmEnabled = false,
+        AutoResetEnabled = false,
+        AutoResetMinutes = 2, -- Padrão: 2 minutos (1 a 5)
+        AntiLagEnabled = false,
+        AutoInitializeEnabled = true
+    }
+
+    local settingsFileName = "SupremeAutomationConfig.json"
+
+    local function saveSettings()
         pcall(function()
-            local remotesFolder = ReplicatedStorage:FindFirstChild("RemotesFolder")
-            if remotesFolder then
-                local preRunShop = remotesFolder:FindFirstChild("PreRunShop")
-                if preRunShop and preRunShop:IsA("RemoteEvent") then
-                    preRunShop:FireServer({}, false, {})
+            if writefile and HttpService then
+                writefile(settingsFileName, HttpService:JSONEncode(config))
+            end
+        end)
+    end
+
+    local function loadSettings()
+        pcall(function()
+            if readfile and isfile and isfile(settingsFileName) then
+                local rawData = readfile(settingsFileName)
+                if rawData then
+                    local decoded = HttpService:JSONDecode(rawData)
+                    if type(decoded) == "table" then
+                        for k, v in pairs(decoded) do
+                            if config[k] ~= nil then config[k] = v end
+                        end
+                    end
                 end
             end
         end)
-        task.wait(0.15)
     end
-end)
 
--- 2. Sistema para Auto Play Again
-local function triggerPlayAgain()
-    pcall(function()
-        local remotesFolder = ReplicatedStorage:FindFirstChild("RemotesFolder")
-        if remotesFolder then
-            local playAgainEvent = remotesFolder:FindFirstChild("PlayAgain")
-            if playAgainEvent and playAgainEvent:IsA("RemoteEvent") then
-                playAgainEvent:FireServer()
-                print("--- [AUTOMATION] Play Again Disparado ---")
+    loadSettings()
+
+    -- Carregamento Blindado da Rayfield (Evita erro de valor nulo)
+    local Rayfield = nil
+    local successRayfield, result = pcall(function()
+        local source = game:HttpGet('https://sirius.menu/rayfield')
+        if not source or source == "" then error("Link vazio") end
+        return loadstring(source)()
+    end)
+
+    if not successRayfield or not result then
+        warn("[Erro Crítico] Falha ao carregar a Rayfield. Verifique se o seu executor permite HttpGet.")
+        _G.UltimateAutomationRunning = false
+        return
+    end
+    Rayfield = result
+
+    -- Criação da Janela
+    local Window = nil
+    local successWindow = pcall(function()
+        Window = Rayfield:CreateWindow({
+            Name = "Painel Supremo - Otimizado",
+            LoadingTitle = "Carregando Módulos...",
+            LoadingSubtitle = "Estável & Blindado",
+            ConfigurationSaving = {
+                Enabled = true,
+                FolderName = "SupremeAutomation",
+                FileName = "SessionData"
+            },
+            KeySystem = false,
+        })
+    end)
+
+    if not successWindow or not Window then
+        _G.UltimateAutomationRunning = false
+        return
+    end
+
+    local MainTab = Window:CreateTab("Automação", 4483362458)
+    local SettingsTab = Window:CreateTab("Configurações", 4483362458)
+
+    -- ==========================================
+    -- 1. Sistema Auto Play Again
+    -- ==========================================
+    MainTab:CreateSection("Auto Play Again")
+    local isDeadProcessing = false
+
+    local function triggerPlayAgain()
+        if isDeadProcessing then return end
+        isDeadProcessing = true
+        
+        pcall(function()
+            local remotesFolder = ReplicatedStorage and ReplicatedStorage:FindFirstChild("RemotesFolder")
+            if remotesFolder then
+                local playAgainEvent = remotesFolder:FindFirstChild("PlayAgain")
+                if playAgainEvent and playAgainEvent:IsA("RemoteEvent") then
+                    playAgainEvent:FireServer()
+                end
+            end
+        end)
+        
+        task.wait(3)
+        isDeadProcessing = false
+    end
+
+    local function monitorCharacter(character)
+        if not character then return end
+        local humanoid = character:WaitForChild("Humanoid", 15)
+        if not humanoid then return end
+        
+        humanoid.Died:Connect(function()
+            if config.AutoPlayAgainEnabled then
+                task.wait(0.15)
+                if humanoid and humanoid.Health <= 0 then
+                    triggerPlayAgain()
+                end
+            end
+        end)
+    end
+
+    if player.Character then monitorCharacter(player.Character) end
+    player.CharacterAdded:Connect(monitorCharacter)
+
+    MainTab:CreateToggle({
+        Name = "Ativar Auto Play Again",
+        CurrentValue = config.AutoPlayAgainEnabled,
+        Flag = "SupremePlayAgainToggle",
+        Callback = function(Value)
+            config.AutoPlayAgainEnabled = Value
+            saveSettings()
+        end,
+    })
+
+    -- ==========================================
+    -- 2. Sistema Auto Pre-run Shop Confirm
+    -- ==========================================
+    MainTab:CreateSection("Auto Pre-run Shop Confirm")
+    local shopProcessed = false
+
+    local function runShopAutomation()
+        if shopProcessed or not config.AutoShopConfirmEnabled then return end
+        
+        task.spawn(function()
+            while config.AutoShopConfirmEnabled and not shopProcessed do
+                pcall(function()
+                    if ReplicatedStorage then
+                        local remotesFolder = ReplicatedStorage:WaitForChild("RemotesFolder", 2)
+                        if remotesFolder then
+                            local preRunShop = remotesFolder:WaitForChild("PreRunShop", 2)
+                            if preRunShop and preRunShop:IsA("RemoteEvent") then
+                                preRunShop:FireServer({}, false, {})
+                            end
+                        end
+                    end
+                end)
+                task.wait(0.15)
+            end
+        end)
+    end
+
+    shopProcessed = false
+    runShopAutomation()
+
+    MainTab:CreateToggle({
+        Name = "Ativar Auto Pre-run Shop Confirm",
+        CurrentValue = config.AutoShopConfirmEnabled,
+        Flag = "SupremeShopConfirmToggle",
+        Callback = function(Value)
+            config.AutoShopConfirmEnabled = Value
+            saveSettings()
+            if Value then
+                shopProcessed = false
+                runShopAutomation()
+            end
+        end,
+    })
+
+    -- ==========================================
+    -- 3. Sistema Auto Reset (Anti-Bug / 1 a 5 min)
+    -- ==========================================
+    MainTab:CreateSection("Auto Reset (Anti-Bug)")
+
+    task.spawn(function()
+        local timer = 0
+        while true do
+            task.wait(1)
+            if config.AutoResetEnabled then
+                timer = timer + 1
+                local targetSeconds = config.AutoResetMinutes * 60
+                if timer >= targetSeconds then
+                    timer = 0
+                    pcall(function()
+                        local char = player.Character
+                        if char and char:FindFirstChild("Humanoid") then
+                            char.Humanoid.Health = 0
+                        end
+                    end)
+                end
+            else
+                timer = 0
             end
         end
     end)
-end
 
-local function monitorCharacter(character)
-    if not character then return end
-    local humanoid = character:WaitForChild("Humanoid", 15)
-    if not humanoid then return end
-    
-    humanoid.Died:Connect(function()
-        if AUTO_PLAY_AGAIN then
-            task.wait(0.15)
-            if humanoid and humanoid.Health <= 0 then
-                triggerPlayAgain()
+    MainTab:CreateToggle({
+        Name = "Ativar Auto Reset Periódico",
+        CurrentValue = config.AutoResetEnabled,
+        Flag = "AutoResetToggle",
+        Callback = function(Value)
+            config.AutoResetEnabled = Value
+            saveSettings()
+        end,
+    })
+
+    MainTab:CreateSlider({
+        Name = "Tempo do Auto Reset (Minutos)",
+        Range = {1, 5},
+        Increment = 1,
+        CurrentValue = config.AutoResetMinutes,
+        Flag = "AutoResetSlider",
+        Callback = function(Value)
+            config.AutoResetMinutes = Value
+            saveSettings()
+        end,
+    })
+
+    -- ==========================================
+    -- 4. Sistema Anti-Lag (Otimização)
+    -- ==========================================
+    SettingsTab:CreateSection("Otimização e Desempenho")
+
+    local function applyAntiLag(state)
+        pcall(function()
+            if state then
+                Lighting.GlobalShadows = false
+                Lighting.FogEnd = 9e9
+                for _, obj in ipairs(workspace:GetDescendants()) do
+                    if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Fire") or obj:IsA("Smoke") then
+                        obj.Enabled = false
+                    end
+                end
+            else
+                Lighting.GlobalShadows = true
             end
-        end
-    end)
+        end)
+    end
+
+    SettingsTab:CreateToggle({
+        Name = "Ativar Anti-Lag (Remove Sombras e Partículas)",
+        CurrentValue = config.AntiLagEnabled,
+        Flag = "AntiLagToggle",
+        Callback = function(Value)
+            config.AntiLagEnabled = Value
+            applyAntiLag(Value)
+            saveSettings()
+        end,
+    })
+
+    if config.AntiLagEnabled then
+        applyAntiLag(true)
+    end
+
+    SettingsTab:CreateButton({
+        Name = "Salvar Configurações Manualmente",
+        Callback = function()
+            saveSettings()
+            Rayfield:Notify({
+                Title = "Sucesso",
+                Content = "Configurações salvas com sucesso!",
+                Duration = 2,
+                Image = 4483362458,
+            })
+        end,
+    })
+
+    pcall(function() Rayfield:LoadConfiguration() end)
+    print("[SupremeAutomation] Sistema totalmente carregado com Auto Reset e Anti-Lag.")
 end
 
-if player.Character then monitorCharacter(player.Character) end
-player.CharacterAdded:Connect(monitorCharacter)
+pcall(startMasterScript)
