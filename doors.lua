@@ -1,8 +1,6 @@
 --[[
     ============================================================
-    Script Supremo Nativo - Correção Definitiva
-    - Auto Reset: Força dano direto no Humanoid (Compatível)
-    - Auto Play Again: Reconexão garantida em cada Respawn
+    Script Supremo Nativo - Versão Final Corrigida (Doors)
     ============================================================
 ]]
 
@@ -143,57 +141,48 @@ local function createToggle(name, initialValue, callback)
     return btn
 end
 
-local function findRemotePrecise(keywords)
-    local found = nil
-    pcall(function()
-        for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
-            if obj:IsA("RemoteEvent") then
-                local nameLower = string.lower(obj.Name)
-                for _, kw in ipairs(keywords) do
-                    if nameLower:find(string.lower(kw)) then
-                        found = obj
-                        return
-                    end
-                end
-            end
-        end
-    end)
-    return found
-end
-
 local lastHeartbeat = {
     ShopLoop = tick(),
     ResetLoop = tick(),
     AFKLoop = tick()
 }
 
--- 1. Auto Play Again (Persistência Garantida)
+-- 1. Auto Play Again (Aguarda o DeathPanel/Estatísticas ficarem visíveis para disparar com segurança)
 local isDeadProcessing = false
 local function triggerPlayAgain()
     if isDeadProcessing then return end
     isDeadProcessing = true
     
     pcall(function()
-        local remotesFolder = ReplicatedStorage:WaitForChild("RemotesFolder", 10)
-        local playAgainEvent = nil
+        local playerGui = player:WaitForChild("PlayerGui", 5)
+        local mainUI = playerGui and playerGui:WaitForChild("MainUI", 5)
         
-        if remotesFolder then
-            playAgainEvent = remotesFolder:WaitForChild("PlayAgain", 5)
+        if mainUI then
+            local deathPanel = mainUI:WaitForChild("DeathPanel", 10)
+            -- Aguarda o DeathPanel ou a Statistics aparecer na tela (indica que o servidor registrou a morte)
+            if deathPanel then
+                local timeout = tick() + 5
+                while not deathPanel.Visible and tick() < timeout and _G.NativeAutomationRunning do
+                    task.wait(0.2)
+                end
+            end
         end
-        
-        if not playAgainEvent then
-            playAgainEvent = findRemotePrecise({"playagain"})
-        end
+
+        -- Pequena pausa extra para estabilizar o estado do cliente
+        task.wait(1.5)
+
+        local remotesFolder = ReplicatedStorage:WaitForChild("RemotesFolder", 5)
+        local playAgainEvent = remotesFolder and remotesFolder:WaitForChild("PlayAgain", 5)
 
         if playAgainEvent then
             playAgainEvent:FireServer()
-            print("[Automation] Play Again acionado via: " .. playAgainEvent:GetFullName())
+            print("[Automation] Play Again disparado com sucesso!")
         else
             warn("[Automation] RemoteEvent 'PlayAgain' não encontrado.")
         end
     end)
     
-    task.wait(3)
+    task.wait(4)
     isDeadProcessing = false
 end
 
@@ -204,7 +193,6 @@ local function monitorCharacter(character)
     
     humanoid.Died:Connect(function()
         if config.AutoPlayAgain then
-            task.wait(0.5)
             triggerPlayAgain()
         end
     end)
@@ -234,10 +222,7 @@ local function startShopThread()
                     if not cachedShopRemote or not cachedShopRemote.Parent then
                         local remotesFolder = ReplicatedStorage:FindFirstChild("RemotesFolder")
                         if remotesFolder then
-                            cachedShopRemote = remotesFolder:FindFirstChild("PreRunShop") or remotesFolder:FindFirstChild("ConfirmShop")
-                        end
-                        if not cachedShopRemote then
-                            cachedShopRemote = findRemotePrecise({"prerunshop", "shopconfirm", "confirmshop", "preshop"})
+                            cachedShopRemote = remotesFolder:FindFirstChild("PreRunShop") or remotesFolder:FindFirstChild("ConfirmShop") or remotesFolder:FindFirstChild("ShopConfirm")
                         end
                     end
                     if cachedShopRemote then
@@ -256,7 +241,7 @@ createToggle("Auto Shop Confirm", config.AutoShopConfirm, function(val)
     saveSettings()
 end)
 
--- 3. Auto Reset (Ajustado para forçar dano direto)
+-- 3. Auto Reset (4 Minutos Exatos)
 local autoResetButton = nil
 
 autoResetButton = createToggle("Auto Reset", config.AutoReset, function(val)
@@ -293,7 +278,6 @@ local function startResetThread()
                         if player.Character then
                             local hum = player.Character:FindFirstChildOfClass("Humanoid")
                             if hum then
-                                hum:TakeDamage(hum.MaxHealth + 999)
                                 hum.Health = 0
                                 print("[Automation] Auto Reset acionado.")
                             end
@@ -348,4 +332,4 @@ task.spawn(function()
     end
 end)
 
-print("[SupremeAutomation] Script atualizado!")
+print("[SupremeAutomation] Script carregado com sincronização de DeathPanel!")
