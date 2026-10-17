@@ -1,6 +1,6 @@
 --[[
     ============================================================
-    Script Supremo Nativo - Versão Orion Library
+    Script Supremo Nativo - Orion Library (Link Atualizado/Mirror)
     ============================================================
 ]]
 
@@ -63,14 +63,21 @@ loadSettings()
 config.AutoResetMinutes = 4
 saveSettings()
 
--- Carrega a Orion Library
+-- Tentativa de carregar a Orion Library por um espelho alternativo e estável
 local OrionLib = nil
-pcall(function()
-    OrionLib = loadstring(game:HttpGet('https://raw.githubusercontent.com/shlexware/Orion/main/source'))()
+local success, err = pcall(function()
+    OrionLib = loadstring(game:HttpGet('https://raw.githubusercontent.com/jensonhirst/Orion/main/source'))()
 end)
 
+if not success or not OrionLib then
+    -- Segunda tentativa com outro link espelho caso o primeiro falhe
+    pcall(function()
+        OrionLib = loadstring(game:HttpGet('https://raw.githubusercontent.com/shlexware/Orion/main/source'))()
+    end)
+end
+
 if not OrionLib then
-    warn("[Automation] Falha ao carregar a Orion Library.")
+    warn("[Automation] Orion Library indisponível no momento. Verifique sua conexão com a internet.")
     return
 end
 
@@ -266,4 +273,4 @@ Tab:AddToggle({
 })
 
 OrionLib:Init()
-print("[SupremeAutomation] Script carregado com sucesso via Orion Library!")
+print("[SupremeAutomation] Script inicializado com sucesso!")
