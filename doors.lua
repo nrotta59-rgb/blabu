@@ -1,6 +1,10 @@
 --[[
     ============================================================
-    Script Supremo Nativo - Busca Resiliente de Remotes
+    Script Supremo Nativo - Caminhos Exatos Ajustados
+    - Auto Play Again (Aponta exatamente para RemotesFolder.PlayAgain)
+    - Auto Pre-run Shop Confirm
+    - Auto Reset (4 minutos)
+    - Anti-AFK
     ============================================================
 ]]
 
@@ -73,6 +77,7 @@ loadSettings()
 config.AutoResetMinutes = 4
 saveSettings()
 
+-- UI Nativa
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "SupremeAutomationUI"
 screenGui.ResetOnSpawn = false
@@ -140,39 +145,23 @@ local function createToggle(name, initialValue, callback)
     return btn
 end
 
--- Cache de Remotes para evitar novas buscas desnecessárias
-local remoteCache = {}
-
-local function findRemote(keywords)
-    local cacheKey = table.concat(keywords, "_")
-    if remoteCache[cacheKey] and remoteCache[cacheKey].Parent then
-        return remoteCache[cacheKey]
-    end
-
-    local foundRemote = nil
-    local timeout = tick() + 5 -- Tenta por até 5 segundos caso o jogo esteja carregando
-    
-    while not foundRemote and tick() < timeout and _G.NativeAutomationRunning do
-        pcall(function()
-            for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
-                if obj:IsA("RemoteEvent") then
-                    local nameLower = string.lower(obj.Name)
-                    for _, kw in ipairs(keywords) do
-                        if nameLower:find(string.lower(kw)) then
-                            foundRemote = obj
-                            remoteCache[cacheKey] = obj
-                            return
-                        end
+-- Busca genérica auxiliar para outros remotes
+local function findRemotePrecise(keywords)
+    local found = nil
+    pcall(function()
+        for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
+            if obj:IsA("RemoteEvent") then
+                local nameLower = string.lower(obj.Name)
+                for _, kw in ipairs(keywords) do
+                    if nameLower:find(string.lower(kw)) then
+                        found = obj
+                        return
                     end
                 end
             end
-        end)
-        if not foundRemote then
-            task.wait(0.5)
         end
-    end
-    
-    return foundRemote
+    end)
+    return found
 end
 
 local lastHeartbeat = {
@@ -181,19 +170,26 @@ local lastHeartbeat = {
     AFKLoop = tick()
 }
 
--- 1. Auto Play Again (Resiliente)
+-- 1. Auto Play Again (Caminho Exato)
 local isDeadProcessing = false
 local function triggerPlayAgain()
     if isDeadProcessing then return end
     isDeadProcessing = true
     
     pcall(function()
-        local playAgainEvent = findRemote({"play", "again", "restart", "respawn", "revive", "retry", "continue", "start"})
+        local remotesFolder = ReplicatedStorage:FindFirstChild("RemotesFolder")
+        local playAgainEvent = remotesFolder and remotesFolder:FindFirstChild("PlayAgain")
+        
+        -- Fallback caso não esteja na pasta esperada de imediato
+        if not playAgainEvent then
+            playAgainEvent = findRemotePrecise({"playagain"})
+        end
+
         if playAgainEvent then
             playAgainEvent:FireServer()
-            print("[Automation] Play Again disparado via: " .. playAgainEvent.Name)
+            print("[Automation] Play Again correto acionado via: " .. playAgainEvent:GetFullName())
         else
-            warn("[Automation] RemoteEvent de Play Again não encontrado após tentativa de espera.")
+            warn("[Automation] RemoteEvent 'PlayAgain' não encontrado.")
         end
     end)
     
@@ -208,7 +204,7 @@ local function monitorCharacter(character)
     
     humanoid.Died:Connect(function()
         if config.AutoPlayAgain then
-            task.wait(0.15)
+            task.wait(0.2)
             if humanoid and humanoid.Health <= 0 then
                 triggerPlayAgain()
             end
@@ -225,19 +221,28 @@ createToggle("Auto Play Again", config.AutoPlayAgain, function(val)
 end)
 
 -- 2. Auto Pre-run Shop Confirm
+local cachedShopRemote = nil
 local function startShopThread()
     task.spawn(function()
         while _G.NativeAutomationRunning do
             lastHeartbeat.ShopLoop = tick()
             if config.AutoShopConfirm then
                 pcall(function()
-                    local shopEvent = findRemote({"shop", "buy", "prerun", "confirm", "item"})
-                    if shopEvent then
-                        shopEvent:FireServer({}, false, {})
+                    if not cachedShopRemote or not cachedShopRemote.Parent then
+                        local remotesFolder = ReplicatedStorage:FindFirstChild("RemotesFolder")
+                        if remotesFolder then
+                            cachedShopRemote = remotesFolder:FindFirstChild("PreRunShop") or remotesFolder:FindFirstChild("ConfirmShop")
+                        end
+                        if not cachedShopRemote then
+                            cachedShopRemote = findRemotePrecise({"prerunshop", "shopconfirm", "confirmshop", "preshop"})
+                        end
+                    end
+                    if cachedShopRemote then
+                        cachedShopRemote:FireServer({}, false, {})
                     end
                 end)
             end
-            task.wait(0.2)
+            task.wait(1)
         end
     end)
 end
@@ -248,7 +253,7 @@ createToggle("Auto Shop Confirm", config.AutoShopConfirm, function(val)
     saveSettings()
 end)
 
--- 3. Auto Reset (4 Minutos)
+-- 3. Auto Reset (4 Minutos Exatos)
 local autoResetButton = nil
 
 autoResetButton = createToggle("Auto Reset", config.AutoReset, function(val)
@@ -284,7 +289,7 @@ local function startResetThread()
                     pcall(function()
                         if player.Character and player.Character:FindFirstChild("Humanoid") then
                             player.Character.Humanoid.Health = 0
-                            print("[Automation] Auto Reset executado.")
+                            print("[Automation] Auto Reset acionado.")
                         end
                     end)
                 end
@@ -336,4 +341,4 @@ task.spawn(function()
     end
 end)
 
-print("[SupremeAutomation] Script carregado com busca resiliente de Remotes!")
+print("[SupremeAutomation] Script atualizado com o caminho exato de PlayAgain!")
