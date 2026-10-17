@@ -1,10 +1,6 @@
 --[[
     ============================================================
-    Script Supremo Nativo - Aguarde Ativo por Remote (PlayAgain)
-    - Auto Play Again (Aguarda o carregamento do evento em qualquer servidor)
-    - Auto Pre-run Shop Confirm
-    - Auto Reset (4 minutos)
-    - Anti-AFK
+    Script Supremo Nativo - Auto Reset Compatível com Play Again
     ============================================================
 ]]
 
@@ -169,14 +165,13 @@ local lastHeartbeat = {
     AFKLoop = tick()
 }
 
--- 1. Auto Play Again (Garante o carregamento no servidor)
+-- 1. Auto Play Again
 local isDeadProcessing = false
 local function triggerPlayAgain()
     if isDeadProcessing then return end
     isDeadProcessing = true
     
     pcall(function()
-        -- Aguarda até 10 segundos para a pasta RemotesFolder ser carregada pelo servidor
         local remotesFolder = ReplicatedStorage:WaitForChild("RemotesFolder", 10)
         local playAgainEvent = nil
         
@@ -184,7 +179,6 @@ local function triggerPlayAgain()
             playAgainEvent = remotesFolder:WaitForChild("PlayAgain", 5)
         end
         
-        -- Busca alternativa caso a pasta principal mude de nome no servidor atual
         if not playAgainEvent then
             playAgainEvent = findRemotePrecise({"playagain"})
         end
@@ -193,7 +187,7 @@ local function triggerPlayAgain()
             playAgainEvent:FireServer()
             print("[Automation] Play Again acionado via: " .. playAgainEvent:GetFullName())
         else
-            warn("[Automation] RemoteEvent 'PlayAgain' não respondeu no tempo limite neste servidor.")
+            warn("[Automation] RemoteEvent 'PlayAgain' não respondeu no tempo limite.")
         end
     end)
     
@@ -208,10 +202,8 @@ local function monitorCharacter(character)
     
     humanoid.Died:Connect(function()
         if config.AutoPlayAgain then
-            task.wait(0.2)
-            if humanoid and humanoid.Health <= 0 then
-                triggerPlayAgain()
-            end
+            task.wait(0.5) -- Aumentado ligeiramente para esperar os remotes do jogo abrirem a tela final
+            triggerPlayAgain()
         end
     end)
 end
@@ -257,7 +249,7 @@ createToggle("Auto Shop Confirm", config.AutoShopConfirm, function(val)
     saveSettings()
 end)
 
--- 3. Auto Reset (4 Minutos)
+-- 3. Auto Reset (Morte Nativa do Personagem)
 local autoResetButton = nil
 
 autoResetButton = createToggle("Auto Reset", config.AutoReset, function(val)
@@ -291,9 +283,10 @@ local function startResetThread()
                 if timer >= maxSeconds then
                     timer = 0
                     pcall(function()
-                        if player.Character and player.Character:FindFirstChild("Humanoid") then
-                            player.Character.Humanoid.Health = 0
-                            print("[Automation] Auto Reset acionado.")
+                        if player.Character then
+                            -- Quebra as juntas do personagem (Morte nativa de jogo)
+                            player.Character:BreakJoints()
+                            print("[Automation] Auto Reset acionado via BreakJoints.")
                         end
                     end)
                 end
@@ -345,4 +338,4 @@ task.spawn(function()
     end
 end)
 
-print("[SupremeAutomation] Script otimizado com rotina de espera de Remote no servidor!")
+print("[SupremeAutomation] Script atualizado com reset de morte nativa (BreakJoints)!")
