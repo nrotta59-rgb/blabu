@@ -1,311 +1,244 @@
 --[[
     ============================================================
-    Script Supremo de Automação (Orion Library - Carregamento Seguro)
-    - Auto Play Again
-    - Auto Pre-run Shop Confirm
-    - Auto Reset (3 minutos por padrão)
-    - Anti-Lag (Otimizador de Desempenho)
-    - Duplo Método de HTTP (Previne erro de nil value)
+    Script Supremo Nativo - Código Principal Consolidado
+    - Auto Play Again (Com busca dinâmica de RemoteEvent)
+    - Auto Pre-run Shop Confirm (Com busca dinâmica de RemoteEvent)
+    - Auto Reset (3 minutos exatos com temporizador)
+    - Painel Nativo Compacto fixado no Canto Superior Direito
+    - Salvamento de Configurações em JSON e Anti-Duplicação
     ============================================================
 ]]
 
-if _G.OrionAutomationRunning then
-    warn("[Automation] Instância anterior detectada. Reiniciando...")
-    _G.OrionAutomationRunning = false
-    task.wait(0.5)
+if _G.NativeAutomationRunning then
+    _G.NativeAutomationRunning = false
+    task.wait(0.2)
 end
-_G.OrionAutomationRunning = true
+_G.NativeAutomationRunning = true
 
-local function startMasterScript()
-    local Players = game:GetService("Players")
-    local ReplicatedStorage = game:GetService("ReplicatedStorage")
-    local Lighting = game:GetService("Lighting")
-    local HttpService = game:GetService("HttpService")
-    
-    local player = Players.LocalPlayer
-    if not player then
-        task.wait(1)
-        return startMasterScript()
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local CoreGui = game:GetService("CoreGui")
+local HttpService = game:GetService("HttpService")
+
+local player = Players.LocalPlayer
+if not player then return end
+
+-- Limpeza de instâncias duplicadas anteriores
+pcall(function()
+    if CoreGui:FindFirstChild("SupremeAutomationUI") then
+        CoreGui.SupremeAutomationUI:Destroy()
     end
+    if player.PlayerGui:FindFirstChild("SupremeAutomationUI") then
+        player.PlayerGui.SupremeAutomationUI:Destroy()
+    end
+end)
 
-    -- Carregamento Blindado da Orion Library (request / HttpGet)
-    local OrionLib = nil
-    local successOrion, result = pcall(function()
-        local source = nil
-        
-        if request then
-            local req = request({
-                Url = "https://raw.githubusercontent.com/shlexware/Orion/main/source",
-                Method = "GET"
-            })
-            if req and req.Body then
-                source = req.Body
-            end
+-- Configurações e Persistência Local
+local config = {
+    AutoPlayAgain = false,
+    AutoShopConfirm = false,
+    AutoReset = false,
+    AutoResetMinutes = 3
+}
+
+local settingsFileName = "NativeAutomationConfig.json"
+
+local function saveSettings()
+    pcall(function()
+        if writefile and HttpService then
+            writefile(settingsFileName, HttpService:JSONEncode(config))
         end
-        
-        if not source or source == "" then
-            source = game:HttpGet("https://raw.githubusercontent.com/shlexware/Orion/main/source")
-        end
-        
-        if not source or source == "" then
-            error("Conteúdo do link retornou vazio.")
-        end
-        
-        return loadstring(source)()
     end)
+end
 
-    if not successOrion or not result then
-        warn("[Erro Crítico] O executor bloqueou o download da biblioteca.")
-        _G.OrionAutomationRunning = false
-        return
-    end
-    OrionLib = result
-
-    -- Configurações Locais
-    local config = {
-        AutoPlayAgainEnabled = false,
-        AutoShopConfirmEnabled = false,
-        AutoResetEnabled = false,
-        AutoResetMinutes = 3,
-        AntiLagEnabled = false
-    }
-
-    local settingsFileName = "OrionAutomationConfig.json"
-
-    local function saveSettings()
-        pcall(function()
-            if writefile and HttpService then
-                writefile(settingsFileName, HttpService:JSONEncode(config))
+local function loadSettings()
+    pcall(function()
+        if readfile and isfile and isfile(settingsFileName) then
+            local decoded = HttpService:JSONDecode(readfile(settingsFileName))
+            if type(decoded) == "table" then
+                for k, v in pairs(decoded) do config[k] = v end
             end
-        end)
-    end
-
-    local function loadSettings()
-        pcall(function()
-            if readfile and isfile and isfile(settingsFileName) then
-                local rawData = readfile(settingsFileName)
-                if rawData then
-                    local decoded = HttpService:JSONDecode(rawData)
-                    if type(decoded) == "table" then
-                        for k, v in pairs(decoded) do
-                            if config[k] ~= nil then config[k] = v end
-                        end
-                    end
-                end
-            end
-        end)
-    end
-
-    loadSettings()
-
-    -- Janela Principal
-    local Window = OrionLib:MakeWindow({
-        Name = "Painel de Automação (Orion UI)",
-        HidePremium = true,
-        SaveConfig = false,
-        IntroEnabled = true,
-        IntroText = "Carregando Módulos...",
-        Icon = "rbxassetid://4483362458"
-    })
-
-    local MainTab = Window:MakeTab({
-        Name = "Automação",
-        Icon = "rbxassetid://4483362458",
-        PremiumOnly = false
-    })
-
-    local SettingsTab = Window:MakeTab({
-        Name = "Configurações",
-        Icon = "rbxassetid://4483362458",
-        PremiumOnly = false
-    })
-
-    -- ==========================================
-    -- 1. Auto Play Again
-    -- ==========================================
-    MainTab:AddSection({ Name = "Auto Play Again" })
-    local isDeadProcessing = false
-
-    local function triggerPlayAgain()
-        if isDeadProcessing then return end
-        isDeadProcessing = true
-        
-        pcall(function()
-            local remotesFolder = ReplicatedStorage:FindFirstChild("RemotesFolder")
-            if remotesFolder then
-                local playAgainEvent = remotesFolder:FindFirstChild("PlayAgain")
-                if playAgainEvent and playAgainEvent:IsA("RemoteEvent") then
-                    playAgainEvent:FireServer()
-                end
-            end
-        end)
-        
-        task.wait(3)
-        isDeadProcessing = false
-    end
-
-    local function monitorCharacter(character)
-        if not character then return end
-        local humanoid = character:WaitForChild("Humanoid", 15)
-        if not humanoid then return end
-        
-        humanoid.Died:Connect(function()
-            if config.AutoPlayAgainEnabled then
-                task.wait(0.15)
-                if humanoid and humanoid.Health <= 0 then
-                    triggerPlayAgain()
-                end
-            end
-        end)
-    end
-
-    if player.Character then monitorCharacter(player.Character) end
-    player.CharacterAdded:Connect(monitorCharacter)
-
-    MainTab:AddToggle({
-        Name = "Ativar Auto Play Again",
-        Default = config.AutoPlayAgainEnabled,
-        Callback = function(Value)
-            config.AutoPlayAgainEnabled = Value
-            saveSettings()
         end
-    })
+    end)
+end
+loadSettings()
 
-    -- ==========================================
-    -- 2. Auto Pre-run Shop Confirm
-    -- ==========================================
-    MainTab:AddSection({ Name = "Auto Pre-run Shop Confirm" })
-    local shopProcessed = false
+-- Criação da Interface Nativa Compacta (Canto Superior Direito)
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "SupremeAutomationUI"
+screenGui.ResetOnSpawn = false
 
-    task.spawn(function()
-        while _G.OrionAutomationRunning do
-            if config.AutoShopConfirmEnabled and not shopProcessed do
+pcall(function()
+    screenGui.Parent = CoreGui
+end)
+if not screenGui.Parent then
+    screenGui.Parent = player:WaitForChild("PlayerGui")
+end
+
+local mainFrame = Instance.new("Frame", screenGui)
+mainFrame.Size = UDim2.new(0, 280, 0, 210)
+mainFrame.Position = UDim2.new(1, -290, 0, 10)
+mainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+mainFrame.BorderSizePixel = 0
+mainFrame.Active = true
+mainFrame.Draggable = true
+
+local uiCorner = Instance.new("UICorner", mainFrame)
+uiCorner.CornerRadius = UDim.new(0, 8)
+
+local titleLabel = Instance.new("TextLabel", mainFrame)
+titleLabel.Size = UDim2.new(1, 0, 0, 35)
+titleLabel.BackgroundTransparency = 1
+titleLabel.Text = "Painel Supremo"
+titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+titleLabel.TextSize = 15
+titleLabel.Font = Enum.Font.SourceSansBold
+
+local container = Instance.new("ScrollingFrame", mainFrame)
+container.Size = UDim2.new(1, -16, 1, -45)
+container.Position = UDim2.new(0, 8, 0, 40)
+container.BackgroundTransparency = 1
+container.CanvasSize = UDim2.new(0, 0, 0, 150)
+container.ScrollBarThickness = 3
+
+local uiList = Instance.new("UIListLayout", container)
+uiList.SortOrder = Enum.SortOrder.LayoutOrder
+uiList.Padding = UDim.new(0, 8)
+
+-- Função geradora de botões
+local function createToggle(name, initialValue, callback)
+    local btn = Instance.new("TextButton", container)
+    btn.Size = UDim2.new(1, 0, 0, 36)
+    btn.BackgroundColor3 = initialValue and Color3.fromRGB(40, 160, 80) or Color3.fromRGB(45, 45, 45)
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.TextSize = 13
+    btn.Font = Enum.Font.SourceSansSemibold
+    
+    local statusText = initialValue and "ATIVADO" or "DESATIVADO"
+    btn.Text = name .. ": " .. statusText
+    
+    local corner = Instance.new("UICorner", btn)
+    corner.CornerRadius = UDim.new(0, 6)
+    
+    local active = initialValue
+    btn.MouseButton1Click:Connect(function()
+        active = not active
+        btn.BackgroundColor3 = active and Color3.fromRGB(40, 160, 80) or Color3.fromRGB(45, 45, 45)
+        local newStatusText = active and "ATIVADO" or "DESATIVADO"
+        btn.Text = name .. ": " .. newStatusText
+        callback(active)
+    end)
+end
+
+-- Sistema de Busca Dinâmica de RemoteEvents
+local function findRemote(keywords)
+    for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
+        if obj:IsA("RemoteEvent") then
+            local nameLower = string.lower(obj.Name)
+            for _, kw in ipairs(keywords) do
+                if nameLower:find(string.lower(kw)) then
+                    return obj
+                end
+            end
+        end
+    end
+    return nil
+end
+
+-- ==========================================
+-- 1. Auto Play Again
+-- ==========================================
+local isDeadProcessing = false
+local function triggerPlayAgain()
+    if isDeadProcessing then return end
+    isDeadProcessing = true
+    
+    pcall(function()
+        local playAgainEvent = findRemote({"playagain", "restart", "respawn", "again"})
+        if playAgainEvent then
+            playAgainEvent:FireServer()
+            print("[Automation] Play Again disparado via: " .. playAgainEvent.Name)
+        else
+            warn("[Automation] RemoteEvent de Play Again não encontrado.")
+        end
+    end)
+    
+    task.wait(3)
+    isDeadProcessing = false
+end
+
+local function monitorCharacter(character)
+    if not character then return end
+    local humanoid = character:WaitForChild("Humanoid", 15)
+    if not humanoid then return end
+    
+    humanoid.Died:Connect(function()
+        if config.AutoPlayAgain then
+            task.wait(0.15)
+            if humanoid and humanoid.Health <= 0 then
+                triggerPlayAgain()
+            end
+        end
+    end)
+end
+
+if player.Character then monitorCharacter(player.Character) end
+player.CharacterAdded:Connect(monitorCharacter)
+
+createToggle("Auto Play Again", config.AutoPlayAgain, function(val)
+    config.AutoPlayAgain = val
+    saveSettings()
+end)
+
+-- ==========================================
+-- 2. Auto Pre-run Shop Confirm
+-- ==========================================
+task.spawn(function()
+    while _G.NativeAutomationRunning do
+        if config.AutoShopConfirm then
+            pcall(function()
+                local shopEvent = findRemote({"prerunshop", "shopconfirm", "shop", "buy"})
+                if shopEvent then
+                    shopEvent:FireServer({}, false, {})
+                end
+            end)
+        end
+        task.wait(0.2)
+    end
+end)
+
+createToggle("Auto Shop Confirm", config.AutoShopConfirm, function(val)
+    config.AutoShopConfirm = val
+    saveSettings()
+end)
+
+-- ==========================================
+-- 3. Auto Reset (3 Minutos Exatos)
+-- ==========================================
+task.spawn(function()
+    local timer = 0
+    while _G.NativeAutomationRunning do
+        task.wait(1)
+        if config.AutoReset then
+            timer = timer + 1
+            if timer >= (config.AutoResetMinutes * 60) then
+                timer = 0
                 pcall(function()
-                    local remotesFolder = ReplicatedStorage:FindFirstChild("RemotesFolder")
-                    if remotesFolder then
-                        local preRunShop = remotesFolder:FindFirstChild("PreRunShop")
-                        if preRunShop and preRunShop:IsA("RemoteEvent") then
-                            preRunShop:FireServer({}, false, {})
-                        end
+                    if player.Character and player.Character:FindFirstChild("Humanoid") then
+                        player.Character.Humanoid.Health = 0
+                        print("[Automation] Auto Reset executado (3 minutos atingidos).")
                     end
                 end)
             end
-            task.wait(0.15)
+        else
+            timer = 0
         end
-    end)
-
-    MainTab:AddToggle({
-        Name = "Ativar Auto Pre-run Shop Confirm",
-        Default = config.AutoShopConfirmEnabled,
-        Callback = function(Value)
-            config.AutoShopConfirmEnabled = Value
-            saveSettings()
-            if Value then
-                shopProcessed = false
-            end
-        end
-    })
-
-    -- ==========================================
-    -- 3. Auto Reset (3 Minutos Padrão)
-    -- ==========================================
-    MainTab:AddSection({ Name = "Auto Reset (Anti-Bug)" })
-
-    task.spawn(function()
-        local timer = 0
-        while _G.OrionAutomationRunning do
-            task.wait(1)
-            if config.AutoResetEnabled then
-                timer = timer + 1
-                local targetSeconds = config.AutoResetMinutes * 60
-                if timer >= targetSeconds then
-                    timer = 0
-                    pcall(function()
-                        local char = player.Character
-                        if char and char:FindFirstChild("Humanoid") then
-                            char.Humanoid.Health = 0
-                        end
-                    end)
-                end
-            else
-                timer = 0
-            end
-        end
-    end)
-
-    MainTab:AddToggle({
-        Name = "Ativar Auto Reset Periódico",
-        Default = config.AutoResetEnabled,
-        Callback = function(Value)
-            config.AutoResetEnabled = Value
-            saveSettings()
-        end
-    })
-
-    MainTab:AddSlider({
-        Name = "Tempo do Auto Reset (Minutos)",
-        Min = 1,
-        Max = 5,
-        Default = config.AutoResetMinutes,
-        Color = Color3.fromRGB(255, 255, 255),
-        Increment = 1,
-        ValueName = "min",
-        Callback = function(Value)
-            config.AutoResetMinutes = Value
-            saveSettings()
-        end    
-    })
-
-    -- ==========================================
-    -- 4. Anti-Lag
-    -- ==========================================
-    SettingsTab:AddSection({ Name = "Otimização e Desempenho" })
-
-    local function applyAntiLag(state)
-        pcall(function()
-            if state then
-                Lighting.GlobalShadows = false
-                Lighting.FogEnd = 9e9
-                for _, obj in ipairs(workspace:GetDescendants()) do
-                    if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Fire") or obj:IsA("Smoke") then
-                        obj.Enabled = false
-                    end
-                end
-            else
-                Lighting.GlobalShadows = true
-            end
-        end)
     end
+end)
 
-    SettingsTab:AddToggle({
-        Name = "Ativar Anti-Lag (Remove Sombras/Efeitos)",
-        Default = config.AntiLagEnabled,
-        Callback = function(Value)
-            config.AntiLagEnabled = Value
-            applyAntiLag(Value)
-            saveSettings()
-        end
-    })
+createToggle("Auto Reset (3 Minutos)", config.AutoReset, function(val)
+    config.AutoReset = val
+    saveSettings()
+end)
 
-    if config.AntiLagEnabled then
-        applyAntiLag(true)
-    end
-
-    SettingsTab:AddButton({
-        Name = "Salvar Configurações Manualmente",
-        Callback = function()
-            saveSettings()
-            OrionLib:MakeNotification({
-                Name = "Sucesso",
-                Content = "Configurações salvas!",
-                Image = "rbxassetid://4483362458",
-                Time = 3
-            })
-        end
-    })
-
-    OrionLib:Init()
-    print("[OrionAutomation] Script executado com sucesso.")
-end
-
-pcall(startMasterScript)
+print("[SupremeAutomation] Código principal consolidado carregado com sucesso!")
