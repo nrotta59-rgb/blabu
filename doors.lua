@@ -1,6 +1,8 @@
 --[[
     ============================================================
-    Script Supremo Nativo - Auto Reset Compatível com Play Again
+    Script Supremo Nativo - Correção Definitiva
+    - Auto Reset: Força dano direto no Humanoid (Compatível)
+    - Auto Play Again: Reconexão garantida em cada Respawn
     ============================================================
 ]]
 
@@ -73,7 +75,7 @@ loadSettings()
 config.AutoResetMinutes = 4
 saveSettings()
 
--- UI Nativa
+-- Interface UI
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "SupremeAutomationUI"
 screenGui.ResetOnSpawn = false
@@ -165,7 +167,7 @@ local lastHeartbeat = {
     AFKLoop = tick()
 }
 
--- 1. Auto Play Again
+-- 1. Auto Play Again (Persistência Garantida)
 local isDeadProcessing = false
 local function triggerPlayAgain()
     if isDeadProcessing then return end
@@ -187,7 +189,7 @@ local function triggerPlayAgain()
             playAgainEvent:FireServer()
             print("[Automation] Play Again acionado via: " .. playAgainEvent:GetFullName())
         else
-            warn("[Automation] RemoteEvent 'PlayAgain' não respondeu no tempo limite.")
+            warn("[Automation] RemoteEvent 'PlayAgain' não encontrado.")
         end
     end)
     
@@ -202,14 +204,19 @@ local function monitorCharacter(character)
     
     humanoid.Died:Connect(function()
         if config.AutoPlayAgain then
-            task.wait(0.5) -- Aumentado ligeiramente para esperar os remotes do jogo abrirem a tela final
+            task.wait(0.5)
             triggerPlayAgain()
         end
     end)
 end
 
-if player.Character then monitorCharacter(player.Character) end
-player.CharacterAdded:Connect(monitorCharacter)
+if player.Character then 
+    task.spawn(function() monitorCharacter(player.Character) end)
+end
+
+player.CharacterAdded:Connect(function(newCharacter)
+    task.spawn(function() monitorCharacter(newCharacter) end)
+end)
 
 createToggle("Auto Play Again", config.AutoPlayAgain, function(val)
     config.AutoPlayAgain = val
@@ -249,7 +256,7 @@ createToggle("Auto Shop Confirm", config.AutoShopConfirm, function(val)
     saveSettings()
 end)
 
--- 3. Auto Reset (Morte Nativa do Personagem)
+-- 3. Auto Reset (Ajustado para forçar dano direto)
 local autoResetButton = nil
 
 autoResetButton = createToggle("Auto Reset", config.AutoReset, function(val)
@@ -284,9 +291,12 @@ local function startResetThread()
                     timer = 0
                     pcall(function()
                         if player.Character then
-                            -- Quebra as juntas do personagem (Morte nativa de jogo)
-                            player.Character:BreakJoints()
-                            print("[Automation] Auto Reset acionado via BreakJoints.")
+                            local hum = player.Character:FindFirstChildOfClass("Humanoid")
+                            if hum then
+                                hum:TakeDamage(hum.MaxHealth + 999)
+                                hum.Health = 0
+                                print("[Automation] Auto Reset acionado.")
+                            end
                         end
                     end)
                 end
@@ -338,4 +348,4 @@ task.spawn(function()
     end
 end)
 
-print("[SupremeAutomation] Script atualizado com reset de morte nativa (BreakJoints)!")
+print("[SupremeAutomation] Script atualizado!")
