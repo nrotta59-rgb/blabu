@@ -1,26 +1,21 @@
 --[[
     ============================================================
-    Script Supremo Nativo - Versão Autorrecuperável
-    - Auto-recuperação (Monitora e reinicia funções/loops se falharem)
-    - Anti-AFK (Evita kick por 20 minutos de inatividade)
-    - Auto Play Again (Busca dinâmica de RemoteEvent)
-    - Auto Pre-run Shop Confirm (Busca dinâmica de RemoteEvent)
-    - Auto Reset (4 minutos exatos com timer regressivo)
-    - Reexecução Automática ao Teleportar / Mudar de Servidor
+    Script Supremo Nativo - Busca Resiliente de Remotes
     ============================================================
 ]]
 
--- Auto-reexecução em teleportes de mapa/servidor
 if queue_on_teleport then
-    queue_on_teleport([[
-        task.wait(1)
-        loadstring(game:HttpGet("https://raw.githubusercontent.com/nrotta59-rgb/blabu/refs/heads/main/doors.lua?v=" .. tick()))()
-    ]])
+    pcall(function()
+        queue_on_teleport([[
+            task.wait(1)
+            loadstring(game:HttpGet("https://raw.githubusercontent.com/nrotta59-rgb/blabu/refs/heads/main/doors.lua?v=" .. tick()))()
+        ]])
+    end)
 end
 
 if _G.NativeAutomationRunning then
     _G.NativeAutomationRunning = false
-    task.wait(0.2)
+    task.wait(0.3)
 end
 _G.NativeAutomationRunning = true
 
@@ -33,7 +28,6 @@ local VirtualUser = game:GetService("VirtualUser")
 local player = Players.LocalPlayer
 if not player then return end
 
--- Limpeza de instâncias duplicadas anteriores
 pcall(function()
     if CoreGui:FindFirstChild("SupremeAutomationUI") then
         CoreGui.SupremeAutomationUI:Destroy()
@@ -43,7 +37,6 @@ pcall(function()
     end
 end)
 
--- Configurações e Persistência Local
 local config = {
     AutoPlayAgain = false,
     AutoShopConfirm = false,
@@ -65,20 +58,21 @@ end
 local function loadSettings()
     pcall(function()
         if readfile and isfile and isfile(settingsFileName) then
-            local decodedTable = HttpService:JSONDecode(readfile(settingsFileName))
+            local fileContent = readfile(settingsFileName)
+            local decodedTable = HttpService:JSONDecode(fileContent)
             if type(decodedTable) == "table" then
-                for k, v in pairs(decodedTable) do config[k] = v end
+                for k, v in pairs(decodedTable) do 
+                    config[k] = v 
+                end
             end
         end
     end)
 end
 loadSettings()
 
--- Força o tempo para 4 minutos
 config.AutoResetMinutes = 4
 saveSettings()
 
--- Interface Nativa
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "SupremeAutomationUI"
 screenGui.ResetOnSpawn = false
@@ -146,41 +140,60 @@ local function createToggle(name, initialValue, callback)
     return btn
 end
 
--- Busca Dinâmica de Remotes
+-- Cache de Remotes para evitar novas buscas desnecessárias
+local remoteCache = {}
+
 local function findRemote(keywords)
-    for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
-        if obj:IsA("RemoteEvent") then
-            local nameLower = string.lower(obj.Name)
-            for _, kw in ipairs(keywords) do
-                if nameLower:find(string.lower(kw)) then
-                    return obj
+    local cacheKey = table.concat(keywords, "_")
+    if remoteCache[cacheKey] and remoteCache[cacheKey].Parent then
+        return remoteCache[cacheKey]
+    end
+
+    local foundRemote = nil
+    local timeout = tick() + 5 -- Tenta por até 5 segundos caso o jogo esteja carregando
+    
+    while not foundRemote and tick() < timeout and _G.NativeAutomationRunning do
+        pcall(function()
+            for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
+                if obj:IsA("RemoteEvent") then
+                    local nameLower = string.lower(obj.Name)
+                    for _, kw in ipairs(keywords) do
+                        if nameLower:find(string.lower(kw)) then
+                            foundRemote = obj
+                            remoteCache[cacheKey] = obj
+                            return
+                        end
+                    end
                 end
             end
+        end)
+        if not foundRemote then
+            task.wait(0.5)
         end
     end
-    return nil
+    
+    return foundRemote
 end
 
--- Status para o Sistema de Autorrecuperação
 local lastHeartbeat = {
     ShopLoop = tick(),
     ResetLoop = tick(),
     AFKLoop = tick()
 }
 
--- 1. Auto Play Again
+-- 1. Auto Play Again (Resiliente)
 local isDeadProcessing = false
 local function triggerPlayAgain()
     if isDeadProcessing then return end
     isDeadProcessing = true
     
     pcall(function()
-        local playAgainEvent = findRemote({"playagain", "restart", "respawn", "again"})
+        local playAgainEvent = findRemote({"play", "again", "restart", "respawn", "revive", "retry", "continue", "start"})
         if playAgainEvent then
             playAgainEvent:FireServer()
             print("[Automation] Play Again disparado via: " .. playAgainEvent.Name)
         else
-            warn("[Automation] RemoteEvent de Play Again não encontrado.")
+            warn("[Automation] RemoteEvent de Play Again não encontrado após tentativa de espera.")
         end
     end)
     
@@ -218,7 +231,7 @@ local function startShopThread()
             lastHeartbeat.ShopLoop = tick()
             if config.AutoShopConfirm then
                 pcall(function()
-                    local shopEvent = findRemote({"prerunshop", "shopconfirm", "shop", "buy"})
+                    local shopEvent = findRemote({"shop", "buy", "prerun", "confirm", "item"})
                     if shopEvent then
                         shopEvent:FireServer({}, false, {})
                     end
@@ -240,7 +253,7 @@ local autoResetButton = nil
 
 autoResetButton = createToggle("Auto Reset", config.AutoReset, function(val)
     config.AutoReset = val
-    if not val then
+    if not val and autoResetButton then
         autoResetButton.Text = "Auto Reset: DESATIVADO"
     end
     saveSettings()
@@ -252,6 +265,7 @@ local function startResetThread()
         while _G.NativeAutomationRunning do
             lastHeartbeat.ResetLoop = tick()
             task.wait(1)
+            
             if config.AutoReset then
                 timer = timer + 1
                 local maxSeconds = config.AutoResetMinutes * 60
@@ -270,7 +284,7 @@ local function startResetThread()
                     pcall(function()
                         if player.Character and player.Character:FindFirstChild("Humanoid") then
                             player.Character.Humanoid.Health = 0
-                            print("[Automation] Auto Reset executado (4 minutos).")
+                            print("[Automation] Auto Reset executado.")
                         end
                     end)
                 end
@@ -304,27 +318,22 @@ createToggle("Anti-AFK", config.AntiAFK, function(val)
     saveSettings()
 end)
 
--- Sistema de Autorrecuperação
+-- Autorrecuperação
 task.spawn(function()
     while _G.NativeAutomationRunning do
         task.wait(10)
         local now = tick()
         
         if now - lastHeartbeat.ShopLoop > 5 then
-            warn("[Automation] Recarregando loop da Loja...")
             startShopThread()
         end
-        
         if now - lastHeartbeat.ResetLoop > 5 then
-            warn("[Automation] Recarregando loop do Reset...")
             startResetThread()
         end
-        
         if now - lastHeartbeat.AFKLoop > 120 then
-            warn("[Automation] Recarregando loop Anti-AFK...")
             startAFKThread()
         end
     end
 end)
 
-print("[SupremeAutomation] Script carregado e configurado para 4 minutos!")
+print("[SupremeAutomation] Script carregado com busca resiliente de Remotes!")
