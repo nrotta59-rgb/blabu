@@ -1,13 +1,20 @@
 --[[
     ============================================================
-    Script Supremo Nativo - Código Principal Consolidado
-    - Auto Play Again (Com busca dinâmica de RemoteEvent)
-    - Auto Pre-run Shop Confirm (Com busca dinâmica de RemoteEvent)
-    - Auto Reset (3 minutos exatos com temporizador)
-    - Painel Nativo Compacto fixado no Canto Superior Direito
-    - Salvamento de Configurações em JSON e Anti-Duplicação
+    Script Supremo Nativo - Com Timer no Auto Reset
+    - Auto Play Again (Busca dinâmica de RemoteEvent)
+    - Auto Pre-run Shop Confirm (Busca dinâmica de RemoteEvent)
+    - Auto Reset (3 minutos exatos com contagem regressiva visível)
+    - Reexecução Automática ao Teleportar / Mudar de Servidor
     ============================================================
 ]]
+
+-- Auto-reexecução em teleportes (Garante que o script continue rodando)
+if queue_on_teleport then
+    queue_on_teleport([[
+        task.wait(1)
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/nrotta59-rgb/blabu/refs/heads/main/doors.lua?v=" .. tick()))()
+    ]])
+end
 
 if _G.NativeAutomationRunning then
     _G.NativeAutomationRunning = false
@@ -105,7 +112,7 @@ local uiList = Instance.new("UIListLayout", container)
 uiList.SortOrder = Enum.SortOrder.LayoutOrder
 uiList.Padding = UDim.new(0, 8)
 
--- Função geradora de botões
+-- Função geradora de botões (retorna o botão criado para manipulação externa)
 local function createToggle(name, initialValue, callback)
     local btn = Instance.new("TextButton", container)
     btn.Size = UDim2.new(1, 0, 0, 36)
@@ -128,6 +135,8 @@ local function createToggle(name, initialValue, callback)
         btn.Text = name .. ": " .. newStatusText
         callback(active)
     end)
+    
+    return btn
 end
 
 -- Sistema de Busca Dinâmica de RemoteEvents
@@ -213,15 +222,36 @@ createToggle("Auto Shop Confirm", config.AutoShopConfirm, function(val)
 end)
 
 -- ==========================================
--- 3. Auto Reset (3 Minutos Exatos)
+-- 3. Auto Reset (Com Timer Regressivo)
 -- ==========================================
+local autoResetButton = nil
+
+autoResetButton = createToggle("Auto Reset", config.AutoReset, function(val)
+    config.AutoReset = val
+    if not val then
+        autoResetButton.Text = "Auto Reset: DESATIVADO"
+    end
+    saveSettings()
+end)
+
 task.spawn(function()
     local timer = 0
     while _G.NativeAutomationRunning do
         task.wait(1)
         if config.AutoReset then
             timer = timer + 1
-            if timer >= (config.AutoResetMinutes * 60) then
+            local maxSeconds = config.AutoResetMinutes * 60
+            local remaining = maxSeconds - timer
+            if remaining < 0 then remaining = 0 end
+            
+            local mins = math.floor(remaining / 60)
+            local secs = remaining % 60
+            
+            if autoResetButton and config.AutoReset then
+                autoResetButton.Text = string.format("Auto Reset: %02d:%02d", mins, secs)
+            end
+            
+            if timer >= maxSeconds then
                 timer = 0
                 pcall(function()
                     if player.Character and player.Character:FindFirstChild("Humanoid") then
@@ -236,9 +266,4 @@ task.spawn(function()
     end
 end)
 
-createToggle("Auto Reset (3 Minutos)", config.AutoReset, function(val)
-    config.AutoReset = val
-    saveSettings()
-end)
-
-print("[SupremeAutomation] Código principal consolidado carregado com sucesso!")
+print("[SupremeAutomation] Script carregado com timer regressivo no Auto Reset!")
