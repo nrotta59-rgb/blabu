@@ -1,6 +1,6 @@
 --[[
     ============================================================
-    Script Supremo Nativo - Versão Final Corrigida (Doors)
+    Script Supremo Nativo - Versão Orion Library
     ============================================================
 ]]
 
@@ -21,21 +21,11 @@ _G.NativeAutomationRunning = true
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local CoreGui = game:GetService("CoreGui")
 local HttpService = game:GetService("HttpService")
 local VirtualUser = game:GetService("VirtualUser")
 
 local player = Players.LocalPlayer
 if not player then return end
-
-pcall(function()
-    if CoreGui:FindFirstChild("SupremeAutomationUI") then
-        CoreGui.SupremeAutomationUI:Destroy()
-    end
-    if player.PlayerGui:FindFirstChild("SupremeAutomationUI") then
-        player.PlayerGui.SupremeAutomationUI:Destroy()
-    end
-end)
 
 local config = {
     AutoPlayAgain = false,
@@ -73,81 +63,31 @@ loadSettings()
 config.AutoResetMinutes = 4
 saveSettings()
 
--- Interface UI
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "SupremeAutomationUI"
-screenGui.ResetOnSpawn = false
-
+-- Carrega a Orion Library
+local OrionLib = nil
 pcall(function()
-    screenGui.Parent = CoreGui
+    OrionLib = loadstring(game:HttpGet('https://raw.githubusercontent.com/shlexware/Orion/main/source'))()
 end)
-if not screenGui.Parent then
-    screenGui.Parent = player:WaitForChild("PlayerGui")
+
+if not OrionLib then
+    warn("[Automation] Falha ao carregar a Orion Library.")
+    return
 end
 
-local mainFrame = Instance.new("Frame", screenGui)
-mainFrame.Size = UDim2.new(0, 280, 0, 250)
-mainFrame.Position = UDim2.new(1, -290, 0, 10)
-mainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-mainFrame.BorderSizePixel = 0
-mainFrame.Active = true
-mainFrame.Draggable = true
+local Window = OrionLib:MakeWindow({
+    Name = "Painel Supremo - Doors",
+    HidePremium = true,
+    SaveConfig = true,
+    ConfigFolder = "SupremeAutomation"
+})
 
-local uiCorner = Instance.new("UICorner", mainFrame)
-uiCorner.CornerRadius = UDim.new(0, 8)
+local Tab = Window:MakeTab({
+    Name = "Automação",
+    Icon = "rbxassetid://4483362458",
+    PremiumOnly = false
+})
 
-local titleLabel = Instance.new("TextLabel", mainFrame)
-titleLabel.Size = UDim2.new(1, 0, 0, 35)
-titleLabel.BackgroundTransparency = 1
-titleLabel.Text = "Painel Supremo"
-titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-titleLabel.TextSize = 15
-titleLabel.Font = Enum.Font.SourceSansBold
-
-local container = Instance.new("ScrollingFrame", mainFrame)
-container.Size = UDim2.new(1, -16, 1, -45)
-container.Position = UDim2.new(0, 8, 0, 40)
-container.BackgroundTransparency = 1
-container.CanvasSize = UDim2.new(0, 0, 0, 190)
-container.ScrollBarThickness = 3
-
-local uiList = Instance.new("UIListLayout", container)
-uiList.SortOrder = Enum.SortOrder.LayoutOrder
-uiList.Padding = UDim.new(0, 8)
-
-local function createToggle(name, initialValue, callback)
-    local btn = Instance.new("TextButton", container)
-    btn.Size = UDim2.new(1, 0, 0, 36)
-    btn.BackgroundColor3 = initialValue and Color3.fromRGB(40, 160, 80) or Color3.fromRGB(45, 45, 45)
-    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    btn.TextSize = 13
-    btn.Font = Enum.Font.SourceSansSemibold
-    
-    local statusText = initialValue and "ATIVADO" or "DESATIVADO"
-    btn.Text = name .. ": " .. statusText
-    
-    local corner = Instance.new("UICorner", btn)
-    corner.CornerRadius = UDim.new(0, 6)
-    
-    local active = initialValue
-    btn.MouseButton1Click:Connect(function()
-        active = not active
-        btn.BackgroundColor3 = active and Color3.fromRGB(40, 160, 80) or Color3.fromRGB(45, 45, 45)
-        local newStatusText = active and "ATIVADO" or "DESATIVADO"
-        btn.Text = name .. ": " .. newStatusText
-        callback(active)
-    end)
-    
-    return btn
-end
-
-local lastHeartbeat = {
-    ShopLoop = tick(),
-    ResetLoop = tick(),
-    AFKLoop = tick()
-}
-
--- 1. Auto Play Again (Aguarda o DeathPanel/Estatísticas ficarem visíveis para disparar com segurança)
+-- 1. Auto Play Again
 local isDeadProcessing = false
 local function triggerPlayAgain()
     if isDeadProcessing then return end
@@ -159,7 +99,6 @@ local function triggerPlayAgain()
         
         if mainUI then
             local deathPanel = mainUI:WaitForChild("DeathPanel", 10)
-            -- Aguarda o DeathPanel ou a Statistics aparecer na tela (indica que o servidor registrou a morte)
             if deathPanel then
                 local timeout = tick() + 5
                 while not deathPanel.Visible and tick() < timeout and _G.NativeAutomationRunning do
@@ -168,7 +107,6 @@ local function triggerPlayAgain()
             end
         end
 
-        -- Pequena pausa extra para estabilizar o estado do cliente
         task.wait(1.5)
 
         local remotesFolder = ReplicatedStorage:WaitForChild("RemotesFolder", 5)
@@ -206,17 +144,20 @@ player.CharacterAdded:Connect(function(newCharacter)
     task.spawn(function() monitorCharacter(newCharacter) end)
 end)
 
-createToggle("Auto Play Again", config.AutoPlayAgain, function(val)
-    config.AutoPlayAgain = val
-    saveSettings()
-end)
+Tab:AddToggle({
+    Name = "Auto Play Again",
+    Default = config.AutoPlayAgain,
+    Callback = function(Value)
+        config.AutoPlayAgain = Value
+        saveSettings()
+    end    
+})
 
 -- 2. Auto Pre-run Shop Confirm
 local cachedShopRemote = nil
 local function startShopThread()
     task.spawn(function()
         while _G.NativeAutomationRunning do
-            lastHeartbeat.ShopLoop = tick()
             if config.AutoShopConfirm then
                 pcall(function()
                     if not cachedShopRemote or not cachedShopRemote.Parent then
@@ -236,27 +177,22 @@ local function startShopThread()
 end
 startShopThread()
 
-createToggle("Auto Shop Confirm", config.AutoShopConfirm, function(val)
-    config.AutoShopConfirm = val
-    saveSettings()
-end)
+Tab:AddToggle({
+    Name = "Auto Shop Confirm",
+    Default = config.AutoShopConfirm,
+    Callback = function(Value)
+        config.AutoShopConfirm = Value
+        saveSettings()
+    end    
+})
 
 -- 3. Auto Reset (4 Minutos Exatos)
-local autoResetButton = nil
-
-autoResetButton = createToggle("Auto Reset", config.AutoReset, function(val)
-    config.AutoReset = val
-    if not val and autoResetButton then
-        autoResetButton.Text = "Auto Reset: DESATIVADO"
-    end
-    saveSettings()
-end)
+local resetToggleElement = nil
 
 local function startResetThread()
     task.spawn(function()
         local timer = 0
         while _G.NativeAutomationRunning do
-            lastHeartbeat.ResetLoop = tick()
             task.wait(1)
             
             if config.AutoReset then
@@ -268,8 +204,8 @@ local function startResetThread()
                 local mins = math.floor(remaining / 60)
                 local secs = remaining % 60
                 
-                if autoResetButton and config.AutoReset then
-                    autoResetButton.Text = string.format("Auto Reset: %02d:%02d", mins, secs)
+                if resetToggleElement and config.AutoReset then
+                    resetToggleElement:Set({Name = string.format("Auto Reset (%02d:%02d)", mins, secs)})
                 end
                 
                 if timer >= maxSeconds then
@@ -286,17 +222,28 @@ local function startResetThread()
                 end
             else
                 timer = 0
+                if resetToggleElement then
+                    resetToggleElement:Set({Name = "Auto Reset"})
+                end
             end
         end
     end)
 end
 startResetThread()
 
+resetToggleElement = Tab:AddToggle({
+    Name = "Auto Reset",
+    Default = config.AutoReset,
+    Callback = function(Value)
+        config.AutoReset = Value
+        saveSettings()
+    end    
+})
+
 -- 4. Anti-AFK
 local function startAFKThread()
     task.spawn(function()
         while _G.NativeAutomationRunning do
-            lastHeartbeat.AFKLoop = tick()
             if config.AntiAFK then
                 pcall(function()
                     VirtualUser:CaptureController()
@@ -309,27 +256,14 @@ local function startAFKThread()
 end
 startAFKThread()
 
-createToggle("Anti-AFK", config.AntiAFK, function(val)
-    config.AntiAFK = val
-    saveSettings()
-end)
+Tab:AddToggle({
+    Name = "Anti-AFK",
+    Default = config.AntiAFK,
+    Callback = function(Value)
+        config.AntiAFK = Value
+        saveSettings()
+    end    
+})
 
--- Autorrecuperação
-task.spawn(function()
-    while _G.NativeAutomationRunning do
-        task.wait(10)
-        local now = tick()
-        
-        if now - lastHeartbeat.ShopLoop > 5 then
-            startShopThread()
-        end
-        if now - lastHeartbeat.ResetLoop > 5 then
-            startResetThread()
-        end
-        if now - lastHeartbeat.AFKLoop > 120 then
-            startAFKThread()
-        end
-    end
-end)
-
-print("[SupremeAutomation] Script carregado com sincronização de DeathPanel!")
+OrionLib:Init()
+print("[SupremeAutomation] Script carregado com sucesso via Orion Library!")
