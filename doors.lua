@@ -1,7 +1,7 @@
 --[[
     ============================================================
-    Script Supremo Nativo - Caminhos Exatos Ajustados
-    - Auto Play Again (Aponta exatamente para RemotesFolder.PlayAgain)
+    Script Supremo Nativo - Aguarde Ativo por Remote (PlayAgain)
+    - Auto Play Again (Aguarda o carregamento do evento em qualquer servidor)
     - Auto Pre-run Shop Confirm
     - Auto Reset (4 minutos)
     - Anti-AFK
@@ -145,7 +145,6 @@ local function createToggle(name, initialValue, callback)
     return btn
 end
 
--- Busca genérica auxiliar para outros remotes
 local function findRemotePrecise(keywords)
     local found = nil
     pcall(function()
@@ -170,26 +169,31 @@ local lastHeartbeat = {
     AFKLoop = tick()
 }
 
--- 1. Auto Play Again (Caminho Exato)
+-- 1. Auto Play Again (Garante o carregamento no servidor)
 local isDeadProcessing = false
 local function triggerPlayAgain()
     if isDeadProcessing then return end
     isDeadProcessing = true
     
     pcall(function()
-        local remotesFolder = ReplicatedStorage:FindFirstChild("RemotesFolder")
-        local playAgainEvent = remotesFolder and remotesFolder:FindFirstChild("PlayAgain")
+        -- Aguarda até 10 segundos para a pasta RemotesFolder ser carregada pelo servidor
+        local remotesFolder = ReplicatedStorage:WaitForChild("RemotesFolder", 10)
+        local playAgainEvent = nil
         
-        -- Fallback caso não esteja na pasta esperada de imediato
+        if remotesFolder then
+            playAgainEvent = remotesFolder:WaitForChild("PlayAgain", 5)
+        end
+        
+        -- Busca alternativa caso a pasta principal mude de nome no servidor atual
         if not playAgainEvent then
             playAgainEvent = findRemotePrecise({"playagain"})
         end
 
         if playAgainEvent then
             playAgainEvent:FireServer()
-            print("[Automation] Play Again correto acionado via: " .. playAgainEvent:GetFullName())
+            print("[Automation] Play Again acionado via: " .. playAgainEvent:GetFullName())
         else
-            warn("[Automation] RemoteEvent 'PlayAgain' não encontrado.")
+            warn("[Automation] RemoteEvent 'PlayAgain' não respondeu no tempo limite neste servidor.")
         end
     end)
     
@@ -253,7 +257,7 @@ createToggle("Auto Shop Confirm", config.AutoShopConfirm, function(val)
     saveSettings()
 end)
 
--- 3. Auto Reset (4 Minutos Exatos)
+-- 3. Auto Reset (4 Minutos)
 local autoResetButton = nil
 
 autoResetButton = createToggle("Auto Reset", config.AutoReset, function(val)
@@ -341,4 +345,4 @@ task.spawn(function()
     end
 end)
 
-print("[SupremeAutomation] Script atualizado com o caminho exato de PlayAgain!")
+print("[SupremeAutomation] Script otimizado com rotina de espera de Remote no servidor!")
