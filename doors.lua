@@ -1,14 +1,16 @@
 --[[
     ============================================================
-    Script Supremo Nativo - Com Timer no Auto Reset
+    Script Supremo Nativo - Versão Autorrecuperável
+    - Auto-recuperação (Monitora e reinicia funções/loops se falharem)
+    - Anti-AFK (Evita kick por 20 minutos de inatividade)
     - Auto Play Again (Busca dinâmica de RemoteEvent)
     - Auto Pre-run Shop Confirm (Busca dinâmica de RemoteEvent)
-    - Auto Reset (3 minutos exatos com contagem regressiva visível)
+    - Auto Reset (4 minutos exatos com timer regressivo)
     - Reexecução Automática ao Teleportar / Mudar de Servidor
     ============================================================
 ]]
 
--- Auto-reexecução em teleportes (Garante que o script continue rodando)
+-- Auto-reexecução em teleportes de mapa/servidor
 if queue_on_teleport then
     queue_on_teleport([[
         task.wait(1)
@@ -26,6 +28,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CoreGui = game:GetService("CoreGui")
 local HttpService = game:GetService("HttpService")
+local VirtualUser = game:GetService("VirtualUser")
 
 local player = Players.LocalPlayer
 if not player then return end
@@ -45,7 +48,8 @@ local config = {
     AutoPlayAgain = false,
     AutoShopConfirm = false,
     AutoReset = false,
-    AutoResetMinutes = 3
+    AutoResetMinutes = 4,
+    AntiAFK = true
 }
 
 local settingsFileName = "NativeAutomationConfig.json"
@@ -61,16 +65,20 @@ end
 local function loadSettings()
     pcall(function()
         if readfile and isfile and isfile(settingsFileName) then
-            local decoded = HttpService:JSONDecode(readfile(settingsFileName))
-            if type(decoded) == "table" then
-                for k, v in pairs(decoded) do config[k] = v end
+            local decodedTable = HttpService:JSONDecode(readfile(settingsFileName))
+            if type(decodedTable) == "table" then
+                for k, v in pairs(decodedTable) do config[k] = v end
             end
         end
     end)
 end
 loadSettings()
 
--- Criação da Interface Nativa Compacta (Canto Superior Direito)
+-- Força o tempo para 4 minutos
+config.AutoResetMinutes = 4
+saveSettings()
+
+-- Interface Nativa
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "SupremeAutomationUI"
 screenGui.ResetOnSpawn = false
@@ -83,7 +91,7 @@ if not screenGui.Parent then
 end
 
 local mainFrame = Instance.new("Frame", screenGui)
-mainFrame.Size = UDim2.new(0, 280, 0, 210)
+mainFrame.Size = UDim2.new(0, 280, 0, 250)
 mainFrame.Position = UDim2.new(1, -290, 0, 10)
 mainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
 mainFrame.BorderSizePixel = 0
@@ -105,14 +113,13 @@ local container = Instance.new("ScrollingFrame", mainFrame)
 container.Size = UDim2.new(1, -16, 1, -45)
 container.Position = UDim2.new(0, 8, 0, 40)
 container.BackgroundTransparency = 1
-container.CanvasSize = UDim2.new(0, 0, 0, 150)
+container.CanvasSize = UDim2.new(0, 0, 0, 190)
 container.ScrollBarThickness = 3
 
 local uiList = Instance.new("UIListLayout", container)
 uiList.SortOrder = Enum.SortOrder.LayoutOrder
 uiList.Padding = UDim.new(0, 8)
 
--- Função geradora de botões (retorna o botão criado para manipulação externa)
 local function createToggle(name, initialValue, callback)
     local btn = Instance.new("TextButton", container)
     btn.Size = UDim2.new(1, 0, 0, 36)
@@ -139,7 +146,7 @@ local function createToggle(name, initialValue, callback)
     return btn
 end
 
--- Sistema de Busca Dinâmica de RemoteEvents
+-- Busca Dinâmica de Remotes
 local function findRemote(keywords)
     for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
         if obj:IsA("RemoteEvent") then
@@ -154,9 +161,14 @@ local function findRemote(keywords)
     return nil
 end
 
--- ==========================================
+-- Status para o Sistema de Autorrecuperação
+local lastHeartbeat = {
+    ShopLoop = tick(),
+    ResetLoop = tick(),
+    AFKLoop = tick()
+}
+
 -- 1. Auto Play Again
--- ==========================================
 local isDeadProcessing = false
 local function triggerPlayAgain()
     if isDeadProcessing then return end
@@ -199,31 +211,31 @@ createToggle("Auto Play Again", config.AutoPlayAgain, function(val)
     saveSettings()
 end)
 
--- ==========================================
 -- 2. Auto Pre-run Shop Confirm
--- ==========================================
-task.spawn(function()
-    while _G.NativeAutomationRunning do
-        if config.AutoShopConfirm then
-            pcall(function()
-                local shopEvent = findRemote({"prerunshop", "shopconfirm", "shop", "buy"})
-                if shopEvent then
-                    shopEvent:FireServer({}, false, {})
-                end
-            end)
+local function startShopThread()
+    task.spawn(function()
+        while _G.NativeAutomationRunning do
+            lastHeartbeat.ShopLoop = tick()
+            if config.AutoShopConfirm then
+                pcall(function()
+                    local shopEvent = findRemote({"prerunshop", "shopconfirm", "shop", "buy"})
+                    if shopEvent then
+                        shopEvent:FireServer({}, false, {})
+                    end
+                end)
+            end
+            task.wait(0.2)
         end
-        task.wait(0.2)
-    end
-end)
+    end)
+end
+startShopThread()
 
 createToggle("Auto Shop Confirm", config.AutoShopConfirm, function(val)
     config.AutoShopConfirm = val
     saveSettings()
 end)
 
--- ==========================================
--- 3. Auto Reset (Com Timer Regressivo)
--- ==========================================
+-- 3. Auto Reset (4 Minutos)
 local autoResetButton = nil
 
 autoResetButton = createToggle("Auto Reset", config.AutoReset, function(val)
@@ -234,36 +246,85 @@ autoResetButton = createToggle("Auto Reset", config.AutoReset, function(val)
     saveSettings()
 end)
 
-task.spawn(function()
-    local timer = 0
-    while _G.NativeAutomationRunning do
-        task.wait(1)
-        if config.AutoReset then
-            timer = timer + 1
-            local maxSeconds = config.AutoResetMinutes * 60
-            local remaining = maxSeconds - timer
-            if remaining < 0 then remaining = 0 end
-            
-            local mins = math.floor(remaining / 60)
-            local secs = remaining % 60
-            
-            if autoResetButton and config.AutoReset then
-                autoResetButton.Text = string.format("Auto Reset: %02d:%02d", mins, secs)
-            end
-            
-            if timer >= maxSeconds then
+local function startResetThread()
+    task.spawn(function()
+        local timer = 0
+        while _G.NativeAutomationRunning do
+            lastHeartbeat.ResetLoop = tick()
+            task.wait(1)
+            if config.AutoReset then
+                timer = timer + 1
+                local maxSeconds = config.AutoResetMinutes * 60
+                local remaining = maxSeconds - timer
+                if remaining < 0 then remaining = 0 end
+                
+                local mins = math.floor(remaining / 60)
+                local secs = remaining % 60
+                
+                if autoResetButton and config.AutoReset then
+                    autoResetButton.Text = string.format("Auto Reset: %02d:%02d", mins, secs)
+                end
+                
+                if timer >= maxSeconds then
+                    timer = 0
+                    pcall(function()
+                        if player.Character and player.Character:FindFirstChild("Humanoid") then
+                            player.Character.Humanoid.Health = 0
+                            print("[Automation] Auto Reset executado (4 minutos).")
+                        end
+                    end)
+                end
+            else
                 timer = 0
+            end
+        end
+    end)
+end
+startResetThread()
+
+-- 4. Anti-AFK
+local function startAFKThread()
+    task.spawn(function()
+        while _G.NativeAutomationRunning do
+            lastHeartbeat.AFKLoop = tick()
+            if config.AntiAFK then
                 pcall(function()
-                    if player.Character and player.Character:FindFirstChild("Humanoid") then
-                        player.Character.Humanoid.Health = 0
-                        print("[Automation] Auto Reset executado (3 minutos atingidos).")
-                    end
+                    VirtualUser:CaptureController()
+                    VirtualUser:ClickButton2(Vector2.new(0, 0))
                 end)
             end
-        else
-            timer = 0
+            task.wait(60)
+        end
+    end)
+end
+startAFKThread()
+
+createToggle("Anti-AFK", config.AntiAFK, function(val)
+    config.AntiAFK = val
+    saveSettings()
+end)
+
+-- Sistema de Autorrecuperação
+task.spawn(function()
+    while _G.NativeAutomationRunning do
+        task.wait(10)
+        local now = tick()
+        
+        if now - lastHeartbeat.ShopLoop > 5 then
+            warn("[Automation] Recarregando loop da Loja...")
+            startShopThread()
+        end
+        
+        if now - lastHeartbeat.ResetLoop > 5 then
+            warn("[Automation] Recarregando loop do Reset...")
+            startResetThread()
+        end
+        
+        if now - lastHeartbeat.AFKLoop > 120 then
+            warn("[Automation] Recarregando loop Anti-AFK...")
+            startAFKThread()
         end
     end
 end)
 
-print("[SupremeAutomation] Script carregado com timer regressivo no Auto Reset!")
+print("[SupremeAutomation] Script carregado e configurado para 4 minutos!")
